@@ -1,0 +1,1661 @@
+GENERATED: 2026-01-01 11:32:46
+VERSION: 2.1
+
+########################################
+0. CRITICAL WORKFLOW INSTRUCTIONS
+########################################
+
+################################################################################
+#                    🔒 CRITICAL WORKFLOW & AUTOMATION RULES                   #
+#                              VERSION 3.0 - FINAL                             #
+#                           43 RULES | 9 PARTS + PART 0                        #
+################################################################################
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 0: SYSTEM OVERVIEW (نمای کلی سیستم — ادغام از AUTOMATION_GUIDE)
+═══════════════════════════════════════════════════════════════════════════════
+
+[0.1] PURPOSE:
+    این سیستم به AI اجازه می‌دهد بدون دخالت دستی کاربر:
+    ✅ پروژه بسازد | ✅ venv ایجاد کند | ✅ pip install کند
+    ✅ فایل/فولدر بسازد | ✅ Git sync کند | ✅ برنامه اجرا کند
+
+[0.2] CORE PRINCIPLE:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │  AI هرگز از کاربر نخواهد دستی فایل بسازد یا کد کپی کند.                 │
+    │  تمام عملیات از طریق build.py انجام می‌شود.                              │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+[0.3] BUILD.PY EXECUTION ORDER (ترتیب قفل‌شده — غیرقابل تغییر):
+
+    ┌──────────────────────────────────────────────────────────────────────────┐
+    │  STEP 1: System Checks      → Internet, DNS, Python version             │
+    │  STEP 2: venv Setup         → Create .venv if not exists                │
+    │  STEP 3: pip Install        → Install from requirements.txt            │
+    │  STEP 4: Folder Creation    → Create project directories               │
+    │  STEP 5: File Creation      → Create/modify project files              │
+    │  STEP 6: Context Generation → Run context_gen.py                       │
+    │  STEP 7: Git Init           → Run setup_git.py (if .git not exists)    │
+    │  STEP 8: Git Sync           → git add . && commit && push              │
+    │  STEP 9: App Launch         → Run main.py via venv Python              │
+    └──────────────────────────────────────────────────────────────────────────┘
+
+[0.4] FILE RESPONSIBILITIES:
+
+    ┌────────────────────┬────────────────────────────────────────────────────┐
+    │ WORKFLOW.txt       │ قوانین رفتار AI + تنظیمات ثابت (این فایل)          │
+    │ ARCHITECTURE.txt   │ معماری و استراتژی خاص پروژه                       │
+    │ context_gen.py     │ تولید LATEST_PROJECT_CONTEXT.txt                  │
+    │ setup_git.py       │ راه‌اندازی اولیه Git (یکبار)                       │
+    │ build.py           │ اجرای تمام عملیات (Template — AI پر می‌کند)        │
+    └────────────────────┴────────────────────────────────────────────────────┘
+
+[0.5] CONTEXT & BACKUP LOCATION:
+    ✅ LATEST_PROJECT_CONTEXT.txt → داخل AI_Tools/
+    ✅ context_backups/           → داخل AI_Tools/
+    ❌ Root پروژه باید تمیز بماند
+
+[0.6] GIT CONFIGURATION (ثابت برای تمام پروژه‌ها):
+
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │  USERNAME:    learner1495                                               │
+    │  EMAIL:       mostafa53548188@gmail.com                                 │
+    │  REPO NAME:   = نام پوشه Root پروژه (اتوماتیک)                          │
+    │  REMOTE URL:  https://github.com/{USERNAME}/{REPO_NAME}.git            │
+    │  BRANCH:      main                                                      │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 1: AUTOMATION & BUILD RULES (قوانین 1-6)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. AUTOMATION STRATEGY:
+   All modifications via build.py. No manual file edits by user.
+   build.py handles: files, folders, pip, configs.
+
+2. DIRECTORY STRUCTURE:
+   Scripts in: ProjectRoot/AI_Tools/
+   Project Root = parent of AI_Tools
+   Use os.path.dirname(os.path.abspath(__file__)) for paths.
+
+3. MANDATORY CONTEXT UPDATE:
+   build.py MUST import and run context_gen.py BEFORE Git operations.
+
+4. GIT AUTOMATION:
+   After context update, build.py runs:
+   git add . → git commit → git push (all via subprocess in Root)
+
+5. EXECUTION:
+   After Git, launch main app via venv Python.
+
+6. COMPLEXITY MANAGEMENT:
+   If >3 files or >400 lines: split into phases.
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 2: ANTI-HALLUCINATION RULES (قوانین 7-11)
+═══════════════════════════════════════════════════════════════════════════════
+
+7. BEFORE ANY CODE:
+   a) State understanding
+   b) List files to create/modify
+   c) Describe changes
+   d) Ask "Proceed?" if complex
+
+8. WHEN UNCERTAIN:
+   Say "I'm not sure about X. Clarify..."
+   Never guess. Never invent requirements.
+
+9. STRICT SCOPE:
+   ❌ No unrequested features
+   ❌ No architecture changes without asking
+   ❌ No modifying unmentioned files
+   ✅ Only do what was asked
+
+10. FILE REFERENCES:
+    Only reference files in context.
+    If missing: ask before creating.
+
+11. CODE OUTPUT:
+    Show only changed parts (unless full requested).
+    Use markers: # === CHANGED START ===
+    Specify file path. Use syntax highlighting.
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 3: RESPONSE STRUCTURE (قوانین 12-14)
+═══════════════════════════════════════════════════════════════════════════════
+
+12. EVERY RESPONSE INCLUDES:
+    1. Summary of work done
+    2. Files modified/created
+    3. Warnings/notes
+    4. Next step statement
+    5. Reference code (e.g., FIX-042)
+
+13. MULTI-PART CODE:
+    Use: # ═══ PART 1 OF 3: [Desc] ═══
+    Summarize at end.
+
+14. ERROR IN RESPONSE:
+    State problem → Explain why → Suggest fix → Ask permission
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 4: CONTEXT AWARENESS (قوانین 15-17)
+═══════════════════════════════════════════════════════════════════════════════
+
+15. CONTEXT PRIORITY:
+    1. WORKFLOW rules (first)
+    2. Project structure
+    3. Existing code
+    4. User request
+
+16. FRESHNESS CHECK:
+    Note "GENERATED ON" timestamp.
+    If >24h old, suggest refresh.
+
+17. MISSING INFO:
+    Don't proceed blind. Ask for file or suggest context_gen.py run.
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 5: PROJECT-SPECIFIC (قوانین 18-20)
+═══════════════════════════════════════════════════════════════════════════════
+
+18. PROJECT TYPE: [User fills per project]
+
+19. TECHNOLOGIES: Python 3.10+, SQLite, [frameworks per project]
+
+20. CRITICAL FILES (NO DELETE):
+    AI_Tools/build.py
+    AI_Tools/context_gen.py
+    AI_Tools/WORKFLOW.txt
+    AI_Tools/setup_git.py
+    AI_Tools/ARCHITECTURE.txt
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 6: COMMUNICATION (قوانین 21-23)
+═══════════════════════════════════════════════════════════════════════════════
+
+21. LANGUAGE: Match user. Code/vars in English.
+
+22. REFERENCE CODES: End with [TOPIC]-[NUM] (e.g., BUILD-001)
+
+23. PROGRESS: Show step X of Y for multi-step tasks.
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 7: ERROR HANDLING & SYSTEM CHECKS (قوانین 24-32)
+═══════════════════════════════════════════════════════════════════════════════
+
+24. TRY-EXCEPT WRAPPING:
+    All operations in build.py wrapped in try-except.
+    Never bare except: — catch specific exceptions.
+    Log errors with log_error("SECTION", str(e))
+
+25. PRE-FLIGHT CHECKS (before network ops):
+    25.1 Internet: ping/socket test
+    25.2 DNS: resolve github.com
+    25.3 Git Remote: git ls-remote --exit-code origin
+    25.4 Python/Pip: version checks
+
+26. INTERNET CHECK FUNCTION:
+    Use socket with timeout=5.
+    Return True/False. Log result.
+
+27. NETWORK LIMITATION DETECTION:
+    DNS Failure → Log + Skip network ops
+    Filtering → Log + Warn
+    Timeout → Retry once + Log
+    Auth Error → Log + Show fix
+
+28. GIT IDENTITY AUTO-CONFIG:
+    Before commit, check user.name exists.
+    If not: use values from PART 0 Section [0.6]
+
+29. LOGGING STANDARD:
+    Format: [TIMESTAMP] [LEVEL] [SECTION] Message
+    Levels: INFO, WARN, ERROR, FATAL
+
+30. GRACEFUL EXIT:
+    Never crash abruptly.
+    Structure: try → except → finally → print_summary → sys.exit(code)
+    Codes: 0=Success, 1=Critical, 2=Unexpected, 3=Network fail
+
+31. SUBPROCESS STANDARD:
+    All external commands via run_subprocess(cmd, desc, critical=False)
+    Includes: timeout, logging, error handling, return (bool, output)
+
+32. BUILD SUMMARY REPORT:
+    Print at end: System Checks status, Operations status, Errors, Warnings, Exit Code.
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 8: DOCUMENTATION REFERENCE RULES (قوانین 33-37)
+═══════════════════════════════════════════════════════════════════════════════
+
+33. MANDATORY DOC CHECK:
+    Before implementing any feature, AI MUST check if official docs exist.
+    Never code from memory alone for libraries/APIs.
+
+34. UNKNOWN LIBRARY HANDLING:
+    If unfamiliar with a library:
+    ❌ Do NOT guess syntax
+    ✅ Ask user for docs link OR
+    ✅ State: "I need to verify X library docs before proceeding"
+
+35. API IMPLEMENTATION:
+    For any external API (exchange, service, etc.):
+    - Request official API docs
+    - Verify endpoints, parameters, auth method
+    - Never assume API structure
+
+36. VERSION SENSITIVITY:
+    Libraries change between versions.
+    If version not specified: ask or state assumption clearly.
+
+37. DOCUMENTATION PRIORITY:
+    1. Official docs (highest)
+    2. Context code examples
+    3. User description
+    4. AI knowledge (lowest — verify first)
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 9: CODE COMPACTNESS RULES (قوانین 38-40)
+═══════════════════════════════════════════════════════════════════════════════
+
+38. NAMING CONVENTION:
+    ✅ Concise but readable names (e.g., get_bal not get_user_balance_from_api)
+    ✅ Single-letter only for loops (i, j, k)
+    ✅ Descriptive for functions/classes
+
+39. CODE DENSITY:
+    ✅ Combine related operations on single line where readable
+    ✅ Use list/dict comprehensions where appropriate
+    ✅ Minimal vertical whitespace (no triple blank lines)
+    ✅ Remove excess comments (no "# this adds two numbers")
+    ❌ No decorative ASCII art in production code
+    ❌ No empty placeholder sections
+    ❌ No repeated code — extract to functions
+
+40. LINE EFFICIENCY:
+    ✅ One-liner if simple: if x: do_y()
+    ✅ Ternary where clear: result = a if cond else b
+    ❌ No multi-line when one works
+    ❌ No verbose logging for obvious operations
+    Target: Maximum clarity with minimum lines.
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 10: FINAL AUTHORITY (قوانین 41-43)
+═══════════════════════════════════════════════════════════════════════════════
+
+41. WORKFLOW SUPREMACY:
+    This file (WORKFLOW.txt) is the FINAL AUTHORITY for AI behavior.
+    If conflict with other files: WORKFLOW wins.
+
+42. ARCHITECTURE RESPECT:
+    ARCHITECTURE.txt defines project-specific logic.
+    AI must follow it but cannot modify without explicit permission.
+
+43. SINGLE RESPONSIBILITY:
+    ┌────────────────────┬──────────────────────────────────────────────────┐
+    │ build.py           │ Only executor — runs all operations             │
+    │ context_gen.py     │ Only context writer — generates context file    │
+    │ setup_git.py       │ Only git initializer — one-time setup           │
+    │ WORKFLOW.txt       │ Only behavior authority — AI rules              │
+    │ ARCHITECTURE.txt   │ Only architecture authority — project logic     │
+    └────────────────────┴──────────────────────────────────────────────────┘
+    ⚠️ هیچ فایلی نباید وظیفه فایل دیگر را انجام دهد
+
+################################################################################
+#                            END OF WORKFLOW.txt                               #
+#                      VERSION 3.0 | 43 RULES | 10 PARTS                       #
+################################################################################
+
+
+[✅ Loaded: WORKFLOW.txt]
+
+########################################
+1. PROJECT ARCHITECTURE
+########################################
+
+################################################################################
+#                    OCEAN HUNTER V10.8.2 — COMPLETE SECURE ARCHITECTURE       #
+#           SPOT SWING TRADING | 5 ALTCOINS → BTC + PAXG ACCUMULATION          #
+#                     Date: 1404/10/09 | 2025-12-30                            #
+#                                                                              #
+#   STATUS: FINAL & LOCKED | CAPITAL: PERCENTAGE-BASED | SECURITY: MAXIMUM    #
+#   REFERENCE: REF-ARCH-V10.8.2-FINAL-LOCK-610                                 #
+################################################################################
+
+================================================================================
+SECTION 1 — CAPITAL ALLOCATION & ASSET ROLES
+================================================================================
+
+[1.1] Capital Model: PERCENTAGE-BASED (Scalable)
+    - Minimum Required: 500 USDT
+    - No Maximum Limit
+    - All calculations use percentages, not fixed amounts
+
+[1.2] Asset Allocation Table:
+
+    +------------+---------+---------------------------------------------+
+    | Asset      | Percent | Role                                        |
+    +------------+---------+---------------------------------------------+
+    | SOL        | 25%     | Primary Swing Target                        |
+    | BNB        | 20%     | Secondary Swing Target                      |
+    | XRP        | 15%     | Tertiary Swing Target                       |
+    | AVAX       | 10%     | Opportunity Target                          |
+    | LINK       | 10%     | Opportunity Target                          |
+    | USDT       | 10%     | Operating Reserve (DCA Fuel)                |
+    | BTC        | 5%      | Growth Vault (Profit Destination)           |
+    | PAXG       | 5%      | Smart Vault (Safe Haven + Refuel)           |
+    +------------+---------+---------------------------------------------+
+    | TOTAL      | 100%    |                                             |
+    +------------+---------+---------------------------------------------+
+
+[1.3] Golden Flow of Capital:
+
+    USDT --> Buy Altcoin --> Sell with Profit --> Profit Router --> BTC/PAXG
+                          --> Principal returns to USDT Pool
+
+[1.4] Core Safety Rules:
+
+    [X] NO STOP-LOSS (DCA replaces cutting losses)
+    [X] NO LEVERAGE (Spot only)
+    [X] NO ETH (Focus on faster alts)
+    [V] PAXG = Last line of defense (Emergency Refuel)
+
+================================================================================
+SECTION 2 — STRATEGY LOGIC: SMART SNIPER
+================================================================================
+
+[2.1] Timeframes:
+    - Analysis: M15 (candle close)
+    - Safety Checks: Real-time / 60s
+
+[2.2] Entry Logic (Score >= 70 to Enter):
+
+    +--------------------+------------------------------------+--------+
+    | Factor             | Condition                          | Points |
+    +--------------------+------------------------------------+--------+
+    | Technical          | RSI(14) < 35 AND Price < BB_Lower  | 35     |
+    | Order Book (OBI)   | Bid Volume > Ask Volume (Top 20)   | 15     |
+    | Volume Spike       | Volume > 1.5 x SMA(20)             | 25     |
+    | Momentum           | Green Candle (Close > Open)        | 25     |
+    +--------------------+------------------------------------+--------+
+    | TOTAL POSSIBLE     |                                    | 100    |
+    +--------------------+------------------------------------+--------+
+
+    NOTE: OBI weight reduced to 15 (was 30) due to Nobitex manipulation risk
+
+[2.3] Exit Logic:
+    - Take Profit: 1.5% - 3% (Dynamic based on momentum)
+    - Trailing Stop: Activates after +1% profit
+
+[2.4] DCA Layers (If Position Goes Against):
+
+    +-------+---------------+----------------+-----------------+
+    | Layer | Trigger       | Add Amount     | New Avg Target  |
+    +-------+---------------+----------------+-----------------+
+    | L1    | -3% from Avg  | +50% Position  | Reduce by ~1.5% |
+    | L2    | -6% from Avg  | +75% Position  | Reduce by ~2.5% |
+    | L3    | -10% from Avg | +100% Position | Reduce by ~4%   |
+    +-------+---------------+----------------+-----------------+
+
+[2.5] NOBITEX API SPECIFICATIONS:
+
+    [2.5.1] Rate Limits:
+        - Private API: 30 requests/minute (HARD LIMIT)
+        - Implementation: Use 25 req/min with 2.5s spacing
+
+    [2.5.2] Order Constraints:
+        - Minimum Order: 10 USDT (Use 12 USDT buffer)
+        - Order Types: "limit" and "market" ONLY
+        - Precision: Fetch dynamically from GET /v2/options
+
+    [2.5.3] Fee Structure:
+        - Taker Fee: 0.35%
+        - Maker Fee: 0.25%
+        - Use 0.35% in all calculations (worst case)
+
+    [2.5.4] Key Endpoints:
+
+        +-----------------------------+----------------------------------+
+        | Endpoint                    | Purpose                          |
+        +-----------------------------+----------------------------------+
+        | GET /v2/wallets             | Fetch all balances               |
+        | GET /v2/orderbook/{symbol}  | Order book for OBI calculation   |
+        | GET /v2/trades/{symbol}     | Recent trades                    |
+        | POST /market/orders/add     | Place new order                  |
+        | POST /market/orders/cancel  | Cancel existing order            |
+        | GET /v2/options             | Trading pairs info (precision)   |
+        | GET /market/udf/history     | OHLCV candle data                |
+        +-----------------------------+----------------------------------+
+
+    [2.5.5] Authentication:
+        - Header: Authorization: Token {API_KEY}
+
+[2.6] POSITION LIMITS & QUEUE SYSTEM:
+
+    [2.6.1] Concurrent Position Limit:
+        MAX_CONCURRENT_POSITIONS = 3
+
+    [2.6.2] Queue Management:
+        - Signals scoring >= 70 but blocked → Add to WAITING_QUEUE
+        - Queue stores: {symbol, score, timestamp, price_at_signal}
+        - Queue Expiry: 4 HOURS (signal becomes stale)
+        - Max Queue Size: 5 signals
+
+    [2.6.3] Queue Processing:
+        WHEN position closes:
+            CHECK WAITING_QUEUE
+            FOR each queued signal (oldest first):
+                IF not expired AND current_price <= price_at_signal * 1.01:
+                    RE-EVALUATE score
+                    IF score >= 70: EXECUTE
+                ELSE:
+                    DISCARD signal
+
+    [2.6.4] Overexposure Protection:
+        IF all 3 slots filled AND new signal score >= 85:
+            LOG "High-conviction signal blocked"
+            ALERT via Telegram
+            ADD to priority queue
+
+[2.7] BTC TREND FILTER (Entry Gate):
+
+    BEFORE any new entry:
+        CHECK BTC_HEALTH (from Section 3.1)
+        IF BTC_HEALTH == "WEAK":
+            BLOCK new entries completely
+            LOG "Entry blocked: BTC in WEAK state"
+            ALERT via Telegram
+        IF BTC_HEALTH == "NEUTRAL" or "STRONG":
+            ALLOW entry evaluation
+
+[2.8] ORDER EXECUTION STRATEGY:
+
+    [2.8.1] Primary Method: LIMIT ORDER
+        - Price: Current price + 0.1% (for BUY)
+        - Price: Current price - 0.1% (for SELL)
+        - Timeout: 30 seconds
+
+    [2.8.2] Fallback Method: MARKET ORDER
+        IF Limit order not filled in 30 seconds:
+            CANCEL limit order
+            PLACE market order
+            LOG "Fallback to market order"
+
+    [2.8.3] Benefits:
+        - Reduced slippage
+        - Lower fees (Maker vs Taker)
+        - Protection against price manipulation
+
+================================================================================
+SECTION 3 — PROFIT ROUTER V2.0 (DYNAMIC BTC/PAXG SPLIT)
+================================================================================
+
+[3.1] BTC Health Assessment (1H Timeframe):
+    - Indicators: RSI(14), EMA(50), MACD(12,26,9)
+
+    BTC_STRONG  = RSI > 60 AND Price > EMA(50) AND MACD > 0
+    BTC_WEAK    = RSI < 40 AND Price < EMA(50) AND MACD < 0
+    BTC_NEUTRAL = Everything else
+
+[3.2] Profit Distribution Rules:
+
+    +------------------+-----------------+-----------------+
+    | BTC State        | To BTC Vault    | To PAXG Vault   |
+    +------------------+-----------------+-----------------+
+    | STRONG           | 80%             | 20%             |
+    | NEUTRAL          | 50%             | 50%             |
+    | WEAK             | 20%             | 80%             |
+    +------------------+-----------------+-----------------+
+
+[3.3] Profit Flow Example (100 USDT profit, NEUTRAL state):
+    → 50 USDT → Buy BTC → BTC Vault
+    → 50 USDT → Buy PAXG → PAXG Vault
+
+================================================================================
+SECTION 4 — EMERGENCY REFUEL PROTOCOL (PAXG → USDT)
+================================================================================
+
+[4.1] Activation Conditions (ALL must be true):
+    - DCA Layer 3 is active
+    - USDT Pool < 20% of allocated slot capital
+    - PAXG position is in PROFIT
+    - Global Stop is NOT active
+
+[4.2] Execution Limits:
+    - Maximum sell: 50% of PAXG holdings
+    - Cooldown: 24 hours between refuels
+
+[4.3] WAIT MODE:
+    IF PAXG is at loss when needed:
+        PAUSE DCA execution
+        WAIT for PAXG recovery
+        ALERT "Waiting for PAXG profit to refuel"
+
+[4.4] Refuel Flow:
+    PAXG (profit) → Sell 50% → USDT → Fund DCA Layer 3
+
+================================================================================
+SECTION 5 — WATCHDOG BELLE (System Health Monitor)
+================================================================================
+
+[5.1] Check Interval: Every 60 seconds
+
+[5.2] Health Checks:
+
+    +-----+---------------------------+------------------+------------------+
+    | #   | Check                     | Warning          | Critical         |
+    +-----+---------------------------+------------------+------------------+
+    | 1   | API Response Time         | > 5 seconds      | > 10 seconds     |
+    | 2   | Balance Sync              | > 1% mismatch    | > 5% mismatch    |
+    | 3   | Position Drift            | > 2% from state  | > 5% from state  |
+    | 4   | Memory Usage              | > 70%            | > 90%            |
+    | 5   | Open Order Age            | > 30 minutes     | > 60 minutes     |
+    | 6   | Last Successful Trade     | > 24 hours       | > 72 hours       |
+    +-----+---------------------------+------------------+------------------+
+
+[5.3] Actions:
+    - Warning: Log + Continue
+    - Critical: Log + Alert + Consider HALT
+
+[5.4] External Heartbeat:
+    - Send Telegram message every 30 MINUTES
+    - Message includes: Status, Open Positions, USDT Balance, BTC Health
+    - If no heartbeat received → System may be down
+
+================================================================================
+SECTION 6 — TELEGRAM INTEGRATION
+================================================================================
+
+[6.1] Alert Levels:
+
+    +----------+-------------------+----------------------------------------+
+    | Level    | Emoji             | Use Case                               |
+    +----------+-------------------+----------------------------------------+
+    | INFO     | ℹ️                | Trade opened, closed, status updates   |
+    | WARNING  | ⚠️                | DCA triggered, queue full, anomaly     |
+    | CRITICAL | 🚨                | Global stop, kill switch, system halt  |
+    | SUCCESS  | ✅                | Profitable trade, vault deposit        |
+    +----------+-------------------+----------------------------------------+
+
+[6.2] Commands:
+
+    /status     → Current positions, balances, mode
+    /stop       → Activate Global Stop
+    /restart    → Begin recovery protocol
+    /report     → Daily summary
+    /mode       → Show current trading mode
+    /queue      → Show waiting queue status
+    /health     → Show BTC health state
+
+[6.3] Connection:
+    - Use SOCKS5 proxy (127.0.0.1:1080) for Iran
+    - Retry logic: 3 attempts with 5s delay
+    - Fallback: Log locally if Telegram fails
+
+[6.4] Security:
+    - WHITELIST_CHAT_IDS: Only your chat ID allowed
+    - Rate limit commands: 1 per 5 seconds
+    - Critical commands require /confirm within 30 seconds
+
+================================================================================
+SECTION 7 — DATA FLOW DIAGRAM
+================================================================================
+
+    +------------------+
+    |   Nobitex API    |
+    +--------+---------+
+             |
+             v
+    +--------+---------+
+    |   Rate Limiter   | (25 req/min, 2.5s spacing)
+    +--------+---------+
+             |
+             v
+    +--------+---------+
+    |  Data Processor  | (Candles, Order Book, Balances)
+    +--------+---------+
+             |
+    +--------+--------+--------+
+    |        |        |        |
+    v        v        v        v
++-------+ +------+ +------+ +--------+
+|Spread | |Wick  | |Volume| |Indicators|
+|Filter | |Filter| |Check | |(RSI,BB) |
++---+---+ +--+---+ +--+---+ +----+----+
+    |        |        |          |
+    +--------+--------+----------+
+             |
+             v
+    +--------+---------+
+    |  Strategy Engine | (Score calculation)
+    +--------+---------+
+             |
+             v
+    +--------+---------+
+    | Position Manager | (Max 3 + Queue)
+    +--------+---------+
+             |
+             v
+    +--------+---------+
+    |  Order Executor  | (Limit first, Market fallback)
+    +--------+---------+
+             |
+             v
+    +--------+---------+
+    |  Profit Router   | (BTC/PAXG split)
+    +--------+---------+
+             |
+             v
+    +--------+---------+
+    |  State Manager   | (state.json + backup)
+    +--------+---------+
+             |
+             v
+    +--------+---------+
+    |    Telegram      | (Alerts + Heartbeat)
+    +------------------+
+================================================================================
+SECTION 8 — DIRECTORY STRUCTURE
+================================================================================
+
+OCEAN_HUNTER/
+├── main.py                     # Entry point + main loop
+├── config.py                   # All parameters & thresholds
+├── requirements.txt            # Python dependencies
+├── state.json                  # Persistent state (positions, balances)
+├── trades.xlsx                 # Trade history log
+├── .env                        # API keys (NEVER commit!)
+├── .gitignore                  # Git ignore rules
+│
+├── Ai_Tools/                   # AI Development Toolkit
+│   ├── setup_git.py            # Git repository initializer
+│   ├── build.py                # Auto-build script
+│   ├── context_gen.py          # Project context generator
+│   ├── WORKFLOW.txt            # Automation rules
+│   └── ARCHITECTURE.txt        # This document (V10.8.2)
+│
+├── modules/
+│   ├── __init__.py
+│   │
+│   ├── core/
+│   │   ├── __init__.py
+│   │   ├── engine.py           # Main trade cycle manager
+│   │   ├── config_loader.py    # Load config & .env
+│   │   ├── rate_limiter.py     # API rate limiting (25 req/min)
+│   │   ├── state_manager.py    # Read/Write state.json + backup
+│   │   └── safety_manager.py   # Kill switch, mode gates, drawdown
+│   │
+│   ├── network/
+│   │   ├── __init__.py
+│   │   ├── nobitex.py          # Exchange API wrapper
+│   │   └── telegram.py         # Alerts with SOCKS5 proxy
+│   │
+│   ├── analysis/
+│   │   ├── __init__.py
+│   │   ├── indicators.py       # RSI, EMA, BB, MACD, ATR
+│   │   ├── orderflow.py        # OBI calculation
+│   │   └── btc_health.py       # BTC state assessment
+│   │
+│   ├── trading/
+│   │   ├── __init__.py
+│   │   ├── strategy.py         # Entry/Exit scoring
+│   │   ├── dca_manager.py      # DCA layers + WAIT MODE
+│   │   ├── profit_router.py    # BTC/PAXG distribution
+│   │   ├── position_manager.py # Max 3 positions + Queue [NEW V10.8]
+│   │   └── refuel.py           # Emergency PAXG liquidation
+│   │
+│   ├── security/               # [NEW V10.8.2]
+│   │   ├── __init__.py
+│   │   ├── spread_filter.py    # Abnormal spread detection
+│   │   ├── wick_filter.py      # Fake candle neutralizer
+│   │   ├── volume_sanity.py    # Wash trade detection
+│   │   └── order_lock.py       # Race condition prevention
+│   │
+│   └── watchdog/
+│       ├── __init__.py
+│       └── belle.py            # 60s health monitor + 30min heartbeat
+│
+├── data/
+│   ├── candles_cache/          # Cached OHLCV data
+│   ├── state_backups/          # Rolling 10 backups [NEW V10.8.2]
+│   └── logs/                   # Daily log files
+│
+└── context_backups/            # Auto-generated context snapshots
+
+================================================================================
+SECTION 9 — REPORTING (trades.xlsx)
+================================================================================
+
+[9.1] Trade Log Columns:
+
+    +-----+-------------------+------------------------------------------------+
+    | #   | Column Name       | Description                                    |
+    +-----+-------------------+------------------------------------------------+
+    | 1   | trade_id          | Unique identifier (UUID)                       |
+    | 2   | timestamp         | Trade execution time                           |
+    | 3   | symbol            | Trading pair (e.g., SOLUSDT)                   |
+    | 4   | side              | BUY or SELL                                    |
+    | 5   | entry_price       | Average entry price                            |
+    | 6   | exit_price        | Exit price (if closed)                         |
+    | 7   | quantity          | Amount traded                                  |
+    | 8   | pnl_usdt          | Profit/Loss in USDT                            |
+    | 9   | pnl_percent       | Profit/Loss percentage                         |
+    | 10  | dca_layer         | DCA level used (0-3)                           |
+    | 11  | profit_destination| Where profit went (BTC/PAXG/BOTH)              |
+    | 12  | btc_health_state  | BTC state at profit time                       |
+    | 13  | paxg_action       | HOLD/REFUEL/NONE                               |
+    | 14  | emergency_refuel  | TRUE/FALSE (was PAXG used for rescue)          |
+    | 15  | fees_paid         | Total fees in USDT                             |
+    | 16  | duration_minutes  | Time from entry to exit                        |
+    | 17  | score_at_entry    | Strategy score when entered                    |
+    | 18  | queue_wait_time   | Minutes waited in queue (0 if immediate) [NEW] |
+    | 19  | security_flags    | Any filters triggered (spread/wick/volume)[NEW]|
+    | 20  | notes             | Auto-generated trade notes                     |
+    +-----+-------------------+------------------------------------------------+
+
+[9.2] Daily Summary Sheet:
+
+    - Total trades executed
+    - Win rate percentage
+    - Net PnL (USDT)
+    - BTC vault growth
+    - PAXG vault growth
+    - Max drawdown reached
+    - API calls made
+    - Queue utilization (signals queued vs executed) [NEW V10.8]
+    - Security blocks count (spread/wick/volume) [NEW V10.8.2]
+
+================================================================================
+SECTION 10 — GLOBAL STOP PROTOCOL
+================================================================================
+
+[10.1] Activation Conditions (ANY triggers STOP):
+
+    +-----+----------------------------------+----------------------------------+
+    | #   | Condition                        | Detection Method                 |
+    +-----+----------------------------------+----------------------------------+
+    | 1   | BTC drops > 8% in 4 hours        | Price monitoring (1H candles)    |
+    | 2   | Portfolio drawdown > 15%         | Real-time balance check          |
+    | 3   | API failure > 60 seconds         | Health check timeout             |
+    | 4   | Manual STOP command              | Telegram /stop command           |
+    | 5   | Balance mismatch > 5%            | Local vs Exchange comparison     |
+    | 6   | State file corruption            | Checksum validation [NEW V10.8.2]|
+    +-----+----------------------------------+----------------------------------+
+
+[10.2] STOP Actions:
+
+    1. Cancel ALL open orders immediately
+    2. Set system state to HALTED
+    3. Send CRITICAL alert to Telegram
+    4. Log all current positions and balances
+    5. Clear WAITING_QUEUE [NEW V10.8]
+    6. Require manual restart with confirmation
+
+[10.3] Recovery Protocol:
+
+    1. User sends /restart command
+    2. System performs full health check
+    3. Compares state.json with exchange data
+    4. Validates state.json checksum [NEW V10.8.2]
+    5. If mismatch found → require manual resolution
+    6. If clean → resume in EXIT_ONLY mode for 1 hour
+    7. After 1 hour with no issues → resume NORMAL mode
+
+================================================================================
+SECTION 11 — SECURITY PROTOCOLS (HARDENED)
+================================================================================
+
+[11.1] Trading Mode Gates (MANDATORY PROGRESSION):
+
+    +------------+------------------+-------------------------------------------+
+    | Mode       | Duration         | Restrictions                              |
+    +------------+------------------+-------------------------------------------+
+    | PAPER      | Min 72 hours     | NO real orders, simulation only           |
+    | LIVE_TEST  | Min 7 days       | Max 50 USDT total exposure                |
+    | LIVE_FULL  | After approval   | Full capital with all safety checks       |
+    +------------+------------------+-------------------------------------------+
+
+    Mode Transition Rules:
+    - PAPER → LIVE_TEST: Requires 72h runtime + manual approval
+    - LIVE_TEST → LIVE_FULL: Requires 7 days + positive PnL + manual approval
+    - Any mode can go back to PAPER instantly
+
+[11.2] Hardware Kill Switch:
+
+    Activation Triggers:
+    - Internet disconnection > 30 seconds
+    - API unresponsive > 60 seconds
+    - System memory > 90%
+    - Unexpected exception in main loop
+
+    Kill Actions:
+    - Immediately terminate all processes
+    - Do NOT attempt order cancellation (may fail)
+    - Write emergency state dump to disk
+    - Send offline alert via backup channel (if possible)
+
+[11.3] Request Rate Limiter:
+
+    Configuration:
+    - Hard limit: 25 requests per minute (below Nobitex 30)
+    - Minimum spacing: 2.5 seconds between requests
+    - Queue overflow action: REJECT and ALERT
+
+    Implementation:
+    - Token bucket algorithm
+    - Separate queues for: Orders, Balance, Market Data
+    - Priority: Orders > Balance > Market Data
+
+[11.4] Balance Sanity Checker:
+
+    Pre-Order Verification:
+    1. Fetch fresh balance from exchange
+    2. Compare with local state.json
+    3. If difference > 5% → HALT + ALERT
+    4. If difference 1-5% → WARNING + Continue
+    5. If difference < 1% → OK
+
+    Post-Order Verification:
+    1. Wait 3 seconds after order
+    2. Fetch updated balance
+    3. Verify expected change occurred
+    4. Log discrepancy if any
+
+[11.5] Maximum Drawdown Protection:
+
+    Threshold: 15% of initial portfolio value
+
+    Monitoring:
+    - Check every 60 seconds (via Watchdog)
+    - Calculate: (Initial_Value - Current_Value) / Initial_Value
+
+    Action on Breach:
+    1. Immediate GLOBAL STOP
+    2. Cancel all open orders
+    3. Send CRITICAL alert with full report
+    4. Require manual intervention to restart
+    5. Log incident with timestamp and portfolio snapshot
+
+[11.6] API Key Security:
+
+    Storage:
+    - .env file with 600 permissions (owner read/write only)
+    - Never logged, never in error messages
+    - Never committed to git (.gitignore enforced)
+
+    Runtime:
+    - Load once at startup
+    - Store in memory only
+    - Clear on shutdown
+
+    Exchange Panel Settings [NEW V10.8.2]:
+    - [X] IP Whitelist: SERVER_IP_ONLY
+    - [X] Permissions: Trade + Read
+    - [ ] Withdrawal: DISABLED (CRITICAL!)
+
+[11.7] Audit Trail:
+
+    All Actions Logged:
+    - Every API request with timestamp
+    - Every order placed/cancelled
+    - Every state change
+    - Every alert sent
+    - Every mode transition
+    - Every security filter trigger [NEW V10.8.2]
+
+    Log Retention:
+    - Daily rotation
+    - 30 days local storage
+    - Critical events: permanent
+
+[11.8] Anti-Manipulation Filters [NEW V10.8.2]:
+
+    [11.8.1] Spread Filter:
+        MAX_SPREAD_PERCENT = 0.005 (0.5%)
+        
+        Logic:
+            spread = (best_ask - best_bid) / best_bid
+            IF spread > MAX_SPREAD_PERCENT:
+                BLOCK entry
+                LOG "Abnormal spread detected"
+                ALERT (WARNING)
+
+    [11.8.2] Wick Filter:
+        Logic:
+            candle_body = |close - open|
+            candle_wick = (high - low) - candle_body
+            IF candle_wick > 3 × candle_body:
+                IGNORE current candle
+                USE previous candle for indicators
+                LOG "Abnormal wick ignored"
+
+    [11.8.3] Volume Sanity Check:
+        Logic:
+            avg_volume = SMA(volume, 20)
+            IF current_volume > 10 × avg_volume:
+                FLAG as SUSPICIOUS
+                REDUCE position size by 50%
+                ALERT (INFO)
+
+    [11.8.4] Order Duplication Lock:
+        ORDER_LOCK = GLOBAL MUTEX
+        MIN_ORDER_INTERVAL = 5 seconds
+        
+        Logic:
+            BEFORE placing order:
+                ACQUIRE ORDER_LOCK
+                IF last_order_time < 5 seconds:
+                    CANCEL placement
+                    LOG "Duplicate order prevented"
+            AFTER placement:
+                RELEASE ORDER_LOCK
+
+    [11.8.5] State File Protection:
+        - Backup state.json every 5 minutes
+        - Keep last 10 backups (rolling)
+        - Validate checksum on load
+        - AUTO-RESTORE if corruption detected
+        - Start in EXIT_ONLY mode after restore
+
+    [11.8.6] Security Boundary Principle:
+        Security filters NEVER:
+            - Modify strategy logic
+            - Modify scoring weights
+            - Force entries
+        
+        They ONLY:
+            - BLOCK execution
+            - REDUCE size
+            - DELAY execution
+        
+        Strategy purity is preserved.
+
+================================================================================
+SECTION 12 — CONFIGURATION REFERENCE (config.py)
+================================================================================
+
+[12.1] Capital Settings:
+
+    # PERCENTAGE-BASED (V10.8+)
+    MIN_CAPITAL_USDT = 500
+    
+    ALLOCATION = {
+        "SOL": 0.25,
+        "BNB": 0.20,
+        "XRP": 0.15,
+        "AVAX": 0.10,
+        "LINK": 0.10,
+        "USDT": 0.10,
+        "BTC": 0.05,
+        "PAXG": 0.05
+    }
+
+[12.2] Trading Parameters:
+
+    MIN_ORDER_USDT = 12
+    ENTRY_SCORE_THRESHOLD = 70
+    TAKE_PROFIT_MIN = 0.015
+    TAKE_PROFIT_MAX = 0.030
+    TRAILING_ACTIVATION = 0.01
+    
+    # Order Execution (V10.8.1+)
+    ORDER_TYPE_PRIMARY = "limit"
+    LIMIT_ORDER_OFFSET = 0.001  # 0.1%
+    LIMIT_ORDER_TIMEOUT = 30   # seconds
+    ORDER_TYPE_FALLBACK = "market"
+
+[12.3] Position Management (V10.8+):
+
+    MAX_CONCURRENT_POSITIONS = 3
+    QUEUE_MAX_SIZE = 5
+    QUEUE_EXPIRY_HOURS = 4
+    QUEUE_PRICE_TOLERANCE = 0.01  # 1%
+
+[12.4] Entry Scoring Weights (V10.8.1+):
+
+    SCORE_WEIGHTS = {
+        "technical": 35,    # RSI + BB
+        "obi": 15,          # Order Book Imbalance (reduced)
+        "volume": 25,       # Volume spike
+        "momentum": 25      # Green candle
+    }
+
+[12.5] DCA Settings:
+
+    DCA_LAYERS = {
+        1: {"trigger": -0.03, "add_percent": 0.50},
+        2: {"trigger": -0.06, "add_percent": 0.75},
+        3: {"trigger": -0.10, "add_percent": 1.00}
+    }
+
+[12.6] Safety Settings:
+
+    MAX_DRAWDOWN_PERCENT = 0.15
+    API_TIMEOUT_SECONDS = 10
+    KILL_SWITCH_TIMEOUT = 60
+    BALANCE_MISMATCH_HALT = 0.05
+    BALANCE_MISMATCH_WARN = 0.01
+
+
+[12.7] Rate Limiting:
+
+    REQUESTS_PER_MINUTE = 25
+    MIN_REQUEST_SPACING = 2.5  # seconds
+
+[12.8] Profit Router:
+
+    BTC_HEALTH_THRESHOLDS = {
+        "STRONG": {"rsi_min": 60, "above_ema": True, "macd_positive": True},
+        "WEAK": {"rsi_max": 40, "below_ema": True, "macd_negative": True}
+    }
+    
+    PROFIT_SPLIT = {
+        "STRONG": {"btc": 0.80, "paxg": 0.20},
+        "NEUTRAL": {"btc": 0.50, "paxg": 0.50},
+        "WEAK": {"btc": 0.20, "paxg": 0.80}
+    }
+
+[12.9] Emergency Refuel:
+
+    PAXG_MAX_SELL_PERCENT = 0.50
+    REFUEL_COOLDOWN_HOURS = 24
+    USDT_LOW_THRESHOLD = 0.20  # 20% of slot capital
+
+[12.10] Telegram:
+
+    TELEGRAM_BOT_TOKEN = "from .env"
+    TELEGRAM_CHAT_ID = "from .env"
+    TELEGRAM_PROXY_HOST = "127.0.0.1"
+    TELEGRAM_PROXY_PORT = 1080
+    HEARTBEAT_INTERVAL_MINUTES = 30  # [NEW V10.8]
+
+[12.11] Nobitex:
+
+    NOBITEX_API_KEY = "from .env"
+    NOBITEX_BASE_URL = "https://api.nobitex.ir"
+    TAKER_FEE = 0.0035
+    MAKER_FEE = 0.0025
+
+[12.12] Security Filters [NEW V10.8.2]:
+
+    MAX_SPREAD_PERCENT = 0.005        # 0.5%
+    WICK_BODY_RATIO_MAX = 3.0         # wick > 3x body = ignore
+    VOLUME_SPIKE_MULTIPLIER = 10      # > 10x avg = suspicious
+    MIN_ORDER_INTERVAL_SECONDS = 5    # anti-duplicate
+    STATE_BACKUP_INTERVAL_MINUTES = 5
+    STATE_BACKUP_KEEP_COUNT = 10
+
+================================================================================
+SECTION 13 — WATCHDOG MODULE (BELLE)
+================================================================================
+
+[13.1] Core Responsibilities:
+
+    +-----+----------------------------------+----------------------------------+
+    | #   | Task                             | Interval                         |
+    +-----+----------------------------------+----------------------------------+
+    | 1   | Health Check (API ping)          | Every 60 seconds                 |
+    | 2   | Balance Verification             | Every 60 seconds                 |
+    | 3   | Drawdown Calculation             | Every 60 seconds                 |
+    | 4   | BTC Crash Detection              | Every 60 seconds                 |
+    | 5   | State File Integrity             | Every 60 seconds [NEW V10.8.2]   |
+    | 6   | Heartbeat Telegram               | Every 30 minutes [NEW V10.8]     |
+    +-----+----------------------------------+----------------------------------+
+
+[13.2] Health Check Flow:
+
+    EVERY 60 SECONDS:
+        1. Ping Nobitex API (GET /v2/options)
+        2. IF timeout > 10s:
+            - Increment failure_count
+        3. IF failure_count >= 3:
+            - Trigger HARDWARE KILL SWITCH
+        4. IF success:
+            - Reset failure_count to 0
+
+[13.3] Heartbeat Message Format [NEW V10.8]:
+
+    ═══════════════════════════════════════
+    🫀 OCEAN HUNTER HEARTBEAT
+    ═══════════════════════════════════════
+    ⏰ Time: 2025-12-30 14:30:00
+    📊 Mode: LIVE_FULL
+    💰 Portfolio: $4,125.50 (+3.14%)
+    📈 Open Positions: 2/3
+    🔄 Queue: 1 signal waiting
+    ⚡ BTC Health: NEUTRAL
+    🛡️ Security: ALL CLEAR
+    ═══════════════════════════════════════
+
+[13.4] Alert Priority Levels:
+
+    +----------+------------------+----------------------------------------+
+    | Level    | Telegram Icon    | Use Case                               |
+    +----------+------------------+----------------------------------------+
+    | INFO     | ℹ️               | Trade executed, profit taken           |
+    | WARNING  | ⚠️               | Spread high, volume spike              |
+    | CRITICAL | 🚨               | Drawdown breach, API failure           |
+    | FATAL    | ☠️               | Kill switch activated                  |
+    +----------+------------------+----------------------------------------+
+================================================================================
+SECTION 14 — EXECUTION FLOW (MAIN LOOP)
+================================================================================
+
+[14.1] Startup Sequence:
+
+    1. Load .env (API keys)
+    2. Load config.py (parameters)
+    3. Load/Create state.json
+    4. Validate state checksum [NEW V10.8.2]
+    5. Verify API connectivity
+    6. Sync balances with exchange
+    7. Check trading mode (PAPER/LIVE_TEST/LIVE_FULL)
+    8. Start Watchdog thread
+    9. Send startup alert to Telegram
+    10. Enter main loop
+
+[14.2] Main Loop (Every 60 Seconds):
+
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │                         MAIN LOOP START                             │
+    └─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │ STEP 1: Check System State                                          │
+    │   - IF HALTED → Skip to END                                         │
+    │   - IF EXIT_ONLY → Skip entry logic                                 │
+    └─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │ STEP 2: Fetch Market Data                                           │
+    │   - Get OHLCV for all 5 altcoins (M15)                              │
+    │   - Get BTC OHLCV (1H) for health check                             │
+    │   - Get order books for OBI                                         │
+    └─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │ STEP 3: Security Filters [NEW V10.8.2]                              │
+    │   - Check spread for each symbol                                    │
+    │   - Check wick anomaly on latest candle                             │
+    │   - Check volume sanity                                             │
+    │   - IF ANY FILTER TRIGGERED → Flag symbol, reduce/block             │
+    └─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │ STEP 4: Calculate Indicators                                        │
+    │   - RSI(14), EMA(20), BB(20,2), MACD(12,26,9)                       │
+    │   - OBI from order book                                             │
+    │   - Volume SMA(20)                                                  │
+    └─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │ STEP 5: Assess BTC Health                                           │
+    │   - Determine STRONG / NEUTRAL / WEAK                               │
+    │   - IF WEAK → Block new entries [NEW V10.8.1]                       │
+    └─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │ STEP 6: Score Entry Candidates                                      │
+    │   - For each altcoin without open position:                         │
+    │     - Calculate entry score (Technical + OBI + Volume + Momentum)   │
+    │     - Weights: 35 + 15 + 25 + 25 = 100 [V10.8.1]                    │
+    │     - IF score >= 70 → Add to candidates                            │
+    └─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │ STEP 7: Position Management [NEW V10.8]                             │
+    │   - Count open positions                                            │
+    │   - IF open_count < 3 → Execute best candidate                      │
+    │   - IF open_count >= 3 → Add to WAITING_QUEUE                       │
+    │   - Process queue (check expiry, price tolerance)                   │
+    └─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │ STEP 8: Execute Entry (If Approved)                                 │
+    │   - Acquire ORDER_LOCK [NEW V10.8.2]                                │
+    │   - Place LIMIT order with 0.1% offset [V10.8.1]                    │
+    │   - Wait up to 30 seconds for fill                                  │
+    │   - IF not filled → Cancel and place MARKET order                   │
+    │   - Release ORDER_LOCK                                              │
+    │   - Update state.json                                               │
+    └─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │ STEP 9: Manage Open Positions                                       │
+    │   - For each open position:                                         │
+    │     - Check exit conditions (TP / Trailing)                         │
+    │     - Check DCA triggers                                            │
+    │     - Execute DCA if triggered (with PAXG refuel if needed)         │
+    │     - Execute exit if profit target hit                             │
+    └─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │ STEP 10: Profit Distribution                                        │
+    │   - IF position closed with profit:                                 │
+    │     - Route profit based on BTC health state                        │
+    │     - Execute BTC/PAXG purchases                                    │
+    │     - Return principal to USDT pool                                 │
+    └─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │ STEP 11: State Persistence                                          │
+    │   - Save state.json                                                 │
+    │   - Backup if 5 minutes passed [NEW V10.8.2]                        │
+    │   - Log trade to trades.xlsx                                        │
+    └─────────────────────────────────────────────────────────────────────┘
+                                    │
+                                    ▼
+    ┌─────────────────────────────────────────────────────────────────────┐
+    │                         MAIN LOOP END                               │
+    │                    (Wait 60 seconds, repeat)                        │
+    └─────────────────────────────────────────────────────────────────────┘
+
+================================================================================
+SECTION 15 — TESTING PROTOCOL
+================================================================================
+
+[15.1] Unit Tests Required:
+
+    +-----+---------------------------+--------------------------------------------+
+    | #   | Module                    | Test Cases                                 |
+    +-----+---------------------------+--------------------------------------------+
+    | 1   | indicators.py             | RSI, EMA, BB, MACD, ATR accuracy           |
+    | 2   | orderflow.py              | OBI correctness vs raw order book          |
+    | 3   | btc_health.py             | STRONG / NEUTRAL / WEAK classification     |
+    | 4   | strategy.py               | Entry score calculation (weighted)         |
+    | 5   | dca_manager.py            | DCA triggers, WAIT MODE logic              |
+    | 6   | profit_router.py          | Profit split consistency                   |
+    | 7   | refuel.py                 | Emergency Refuel conditions                |
+    | 8   | rate_limiter.py           | Token bucket + spacing enforcement         |
+    | 9   | state_manager.py          | Save / load / checksum / restore           |
+    | 10  | security_filters/*        | Spread, Wick, Volume sanity [V10.8.2]      |
+    +-----+---------------------------+--------------------------------------------+
+
+[15.2] Integration Tests:
+
+    1. Full lifecycle trade:
+        Entry → DCA L1 → DCA L2 → Exit → Profit Split
+    2. Emergency Refuel path (PAXG in profit)
+    3. WAIT MODE activation (PAXG in loss)
+    4. Global Stop activation + recovery
+    5. Queue behavior:
+        - Add when full
+        - Expiry (4h)
+        - Price deviation > 2%
+    6. API failure simulation
+    7. State corruption & auto-restore [NEW V10.8.2]
+
+[15.3] Paper Trading Requirements:
+
+    - Minimum runtime: 72 continuous hours
+    - Minimum simulated trades: 10
+    - Must include:
+        • One DCA scenario
+        • One trailing exit
+        • One profit routing to BTC
+        • One profit routing to PAXG
+    - Must trigger at least:
+        • One security filter event
+        • One heartbeat log
+================================================================================
+SECTION 16 — DEPLOYMENT CHECKLIST
+================================================================================
+
+[16.1] Pre-Deployment (MANDATORY):
+
+    [ ] Nobitex API key with READ + TRADE only
+    [ ] Withdrawal permission DISABLED
+    [ ] IP Whitelist enabled (server IP only) [V10.8.2]
+    [ ] .env permissions set to 600
+    [ ] .gitignore blocks .env and state.json
+    [ ] All unit tests PASSED
+    [ ] Paper mode completed (≥72h)
+    [ ] Telegram bot tested (alerts + heartbeat)
+    [ ] Server timezone = UTC
+    [ ] Disk space > 20% free
+    [ ] CPU/RAM stable under load
+
+[16.2] Mode Progression (STRICT):
+
+    PAPER
+      └─ after 72h + approval →
+    LIVE_TEST (Max exposure: 50 USDT)
+      └─ after 7 days + positive PnL →
+    LIVE_FULL
+
+[16.3] Go-Live Sequence:
+
+    1. Set MODE = "LIVE_TEST"
+    2. Start system
+    3. Confirm startup alert
+    4. Monitor logs + Telegram closely
+    5. Review trades.xlsx daily
+    6. Promote to LIVE_FULL only after approval
+
+[16.4] Rollback Plan:
+
+    IF unexpected behavior:
+        - Switch MODE to PAPER
+        - Disable API key
+        - Review logs + state backups
+        - Restart only after root cause identified
+================================================================================
+SECTION 17 — FINAL LOCK & ARCHITECTURE STATUS
+================================================================================
+
+Architecture Name:
+    OCEAN HUNTER — COMPLETE SECURE ARCHITECTURE
+
+Version:
+    V10.8.2
+
+Trading Type:
+    SPOT — NO LEVERAGE — NO STOP LOSS
+
+Risk Philosophy:
+    • Capital preservation > profit speed
+    • BTC & PAXG = long-term vaults
+    • USDT = operational fuel only
+
+Security Philosophy:
+    • Assume exchange misbehavior
+    • Assume network failure
+    • Assume software bugs
+    • Protect capital above all
+
+Status:
+    ✅ ARCHITECTURE COMPLETE
+    ✅ SECURITY HARDENED
+    ✅ READY FOR IMPLEMENTATION
+    ✅ FINAL — NO FURTHER CHANGES WITHOUT VERSION BUMP
+
+================================================================================
+ARCHITECTURE REFERENCE CODE:
+REF-ARCH-V10.8.2-FINAL-LOCK-610
+================================================================================
+
+
+[✅ Loaded: ARCHITECTURE.txt]
+
+========================================
+2. PROJECT STRUCTURE
+========================================
+[DIR] OCEANHUNTER/
+    .env
+    config.py
+    main.py
+    requirements.txt
+    state.json
+    [DIR] logs/
+    [DIR] modules/
+        __init__.py
+        [DIR] analysis/
+            __init__.py
+        [DIR] core/
+            __init__.py
+        [DIR] network/
+            __init__.py
+        [DIR] security/
+            __init__.py
+        [DIR] trading/
+            __init__.py
+        [DIR] watchdog/
+            __init__.py
+
+========================================
+3. INSTALLED PACKAGES
+========================================
+aiohappyeyeballs==2.6.1
+aiohttp==3.13.2
+aiosignal==1.4.0
+altair==6.0.0
+arabic-reshaper==3.0.0
+asttokens==3.0.1
+asyncio==4.0.0
+attrs==25.4.0
+beautifulsoup4==4.14.2
+black==22.12.0
+blinker==1.9.0
+bs4==0.0.2
+cachetools==6.2.4
+certifi==2025.11.12
+charset-normalizer==3.4.4
+click==8.3.1
+cloudscraper==1.2.71
+colorama==0.4.6
+contourpy==1.3.3
+cycler==0.12.1
+DateTime==6.0
+decorator==5.2.1
+et_xmlfile==2.0.0
+executing==2.2.1
+finpy_tse==1.2.10
+fonttools==4.61.1
+frozenlist==1.8.0
+gitdb==4.0.12
+GitPython==3.1.45
+hachoir==3.3.0
+idna==3.11
+ipython==9.8.0
+ipython_pygments_lexers==1.1.1
+jalali_core==1.0.0
+jdatetime==3.8.2
+jedi==0.19.2
+Jinja2==3.1.6
+jsonschema==4.25.1
+jsonschema-specifications==2025.9.1
+kiwisolver==1.4.9
+lxml==4.9.4
+MarkupSafe==3.0.3
+matplotlib==3.10.8
+matplotlib-inline==0.2.1
+multidict==6.7.0
+mypy_extensions==1.1.0
+narwhals==2.14.0
+numpy==2.4.0
+openpyxl==3.1.5
+packaging==25.0
+pandas==2.3.3
+parso==0.8.5
+pathspec==0.12.1
+persiantools==5.4.0
+pillow==12.0.0
+platformdirs==4.5.1
+plotly==6.5.0
+prompt_toolkit==3.0.52
+propcache==0.4.1
+protobuf==6.33.2
+pure_eval==0.2.3
+pyaes==1.6.1
+pyarrow==22.0.0
+pyasn1==0.6.1
+pydeck==0.9.1
+Pygments==2.19.2
+pyparsing==3.2.5
+python-bidi==0.6.7
+python-dateutil==2.9.0.post0
+pytse-client==0.19.1
+pytz==2025.2
+referencing==0.37.0
+requests==2.32.5
+requests-toolbelt==1.0.0
+rpds-py==0.30.0
+rsa==4.9.1
+six==1.17.0
+smmap==5.0.2
+soupsieve==2.8
+stack-data==0.6.3
+streamlit==1.52.2
+ta==0.11.0
+Telethon==1.42.0
+tenacity==7.0.0
+toml==0.10.2
+tornado==6.5.4
+traitlets==5.14.3
+typing_extensions==4.15.0
+tzdata==2025.3
+unsync==1.4.0
+urllib3==2.5.0
+watchdog==6.0.0
+wcwidth==0.2.14
+xlsxwriter==3.2.9
+yarl==1.22.0
+zope.interface==8.1.1
+
+========================================
+4. FILE CONTENTS
+========================================
+
+==================== START: config.py ====================
+# config.py — OCEAN HUNTER V10.8.2
+# ═══════════════════════════════════════════════════════════════
+
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
+
+# ═══ API KEYS ═══
+NOBITEX_API_KEY = os.getenv("NOBITEX_API_KEY", "")
+NOBITEX_API_SECRET = os.getenv("NOBITEX_API_SECRET", "")
+TELEGRAM_BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN", "")
+TELEGRAM_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID", "")
+
+# ═══ PROXY ═══
+PROXY_HOST = os.getenv("PROXY_HOST", "127.0.0.1")
+PROXY_PORT = int(os.getenv("PROXY_PORT", 1080))
+
+# ═══ TRADING PAIRS ═══
+TRADE_COINS = ["SOL", "BNB", "XRP", "AVAX", "LINK"]
+QUOTE_CURRENCY = "USDT"
+
+# ═══ ALLOCATION (%) ═══
+ALLOCATION = {
+    "SOL": 25,
+    "BNB": 20,
+    "XRP": 15,
+    "AVAX": 10,
+    "LINK": 10,
+    "USDT": 10,  # Reserve"BTC": 5,    # Growth Fund
+    "PAXG": 5,   # Safe Haven
+}
+
+# ═══ STRATEGY PARAMS ═══
+ENTRY_SCORE_MIN = 70
+RSI_PERIOD = 14
+RSI_OVERSOLD = 35
+BB_PERIOD = 20
+VOLUME_SMA_PERIOD = 20
+VOLUME_SPIKE_MULT = 1.5
+
+# ═══ EXIT PARAMS ═══
+TAKE_PROFIT_MIN = 1.5  # %
+TAKE_PROFIT_MAX = 3.0  # %
+TRAILING_STOP_TRIGGER = 1.0  # %
+TRAILING_STOP_DISTANCE = 0.5  # %
+
+# ═══ DCA LAYERS ═══
+DCA_LAYERS = {
+    "L1": {"trigger": -3, "add": 50},
+    "L2": {"trigger": -6, "add": 75},
+    "L3": {"trigger": -10, "add": 100},
+}
+
+# ═══ LIMITS ═══
+MAX_POSITIONS = 3
+MIN_ORDER_USDT = 15  # 12 + buffer
+RATE_LIMIT_DELAY = 2.5  # seconds
+
+# ═══ NOBITEX API ═══
+NOBITEX_BASE_URL = "https://api.nobitex.ir"
+
+==================== END: config.py ====================
+
+==================== START: main.py ====================
+# main.py — OCEAN HUNTER V10.8.2
+# ═══════════════════════════════════════════════════════════════
+
+import time
+from datetime import datetime
+
+def main():
+    print("=" * 50)
+    print("🌊 OCEAN HUNTER V10.8.2")
+    print(f"⏰ Started: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+    print("=" * 50)
+    print()
+    print("✅ Structure Ready")
+    print("⏳ Modules will be implemented in next sessions...")
+    print()
+    print("=" * 50)
+
+if __name__ == "__main__":
+    main()
+
+==================== END: main.py ====================
+
+==================== START: requirements.txt ====================
+requests>=2.31.0
+python-dotenv>=1.0.0
+PySocks>=1.7.1
+
+==================== END: requirements.txt ====================
+
+==================== START: state.json ====================
+{
+    "positions": {},
+    "pending_queue": [],
+    "last_heartbeat": null,
+    "total_profit_usdt": 0,
+    "btc_accumulated": 0,
+    "paxg_accumulated": 0
+}
+
+==================== END: state.json ====================
+
+==================== START: modules\__init__.py ====================
+# OCEAN HUNTER Modules
+
+==================== END: modules\__init__.py ====================
+
+==================== START: modules\analysis\__init__.py ====================
+# Analysis Module
+
+==================== END: modules\analysis\__init__.py ====================
+
+==================== START: modules\core\__init__.py ====================
+# Core Module
+
+==================== END: modules\core\__init__.py ====================
+
+==================== START: modules\network\__init__.py ====================
+# Network Module
+
+==================== END: modules\network\__init__.py ====================
+
+==================== START: modules\security\__init__.py ====================
+# Security Module
+
+==================== END: modules\security\__init__.py ====================
+
+==================== START: modules\trading\__init__.py ====================
+# Trading Module
+
+==================== END: modules\trading\__init__.py ====================
+
+==================== START: modules\watchdog\__init__.py ====================
+# Watchdog Module
+
+==================== END: modules\watchdog\__init__.py ====================

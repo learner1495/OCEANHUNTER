@@ -1,0 +1,301 @@
+################################################################################
+#                    🔒 CRITICAL WORKFLOW & AUTOMATION RULES                   #
+#                              VERSION 3.0 - FINAL                             #
+#                           43 RULES | 9 PARTS + PART 0                        #
+################################################################################
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 0: SYSTEM OVERVIEW (نمای کلی سیستم — ادغام از AUTOMATION_GUIDE)
+═══════════════════════════════════════════════════════════════════════════════
+
+[0.1] PURPOSE:
+    این سیستم به AI اجازه می‌دهد بدون دخالت دستی کاربر:
+    ✅ پروژه بسازد | ✅ venv ایجاد کند | ✅ pip install کند
+    ✅ فایل/فولدر بسازد | ✅ Git sync کند | ✅ برنامه اجرا کند
+
+[0.2] CORE PRINCIPLE:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │  AI هرگز از کاربر نخواهد دستی فایل بسازد یا کد کپی کند.                 │
+    │  تمام عملیات از طریق build.py انجام می‌شود.                              │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+[0.3] BUILD.PY EXECUTION ORDER (ترتیب قفل‌شده — غیرقابل تغییر):
+
+    ┌──────────────────────────────────────────────────────────────────────────┐
+    │  STEP 1: System Checks      → Internet, DNS, Python version             │
+    │  STEP 2: venv Setup         → Create .venv if not exists                │
+    │  STEP 3: pip Install        → Install from requirements.txt            │
+    │  STEP 4: Folder Creation    → Create project directories               │
+    │  STEP 5: File Creation      → Create/modify project files              │
+    │  STEP 6: Context Generation → Run context_gen.py                       │
+    │  STEP 7: Git Init           → Run setup_git.py (if .git not exists)    │
+    │  STEP 8: Git Sync           → git add . && commit && push              │
+    │  STEP 9: App Launch         → Run main.py via venv Python              │
+    └──────────────────────────────────────────────────────────────────────────┘
+
+[0.4] FILE RESPONSIBILITIES:
+
+    ┌────────────────────┬────────────────────────────────────────────────────┐
+    │ WORKFLOW.txt       │ قوانین رفتار AI + تنظیمات ثابت (این فایل)          │
+    │ ARCHITECTURE.txt   │ معماری و استراتژی خاص پروژه                       │
+    │ context_gen.py     │ تولید LATEST_PROJECT_CONTEXT.txt                  │
+    │ setup_git.py       │ راه‌اندازی اولیه Git (یکبار)                       │
+    │ build.py           │ اجرای تمام عملیات (Template — AI پر می‌کند)        │
+    └────────────────────┴────────────────────────────────────────────────────┘
+
+[0.5] CONTEXT & BACKUP LOCATION:
+    ✅ LATEST_PROJECT_CONTEXT.txt → داخل AI_Tools/
+    ✅ context_backups/           → داخل AI_Tools/
+    ❌ Root پروژه باید تمیز بماند
+
+[0.6] GIT CONFIGURATION (ثابت برای تمام پروژه‌ها):
+
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │  USERNAME:    learner1495                                               │
+    │  EMAIL:       mostafa53548188@gmail.com                                 │
+    │  REPO NAME:   = نام پوشه Root پروژه (اتوماتیک)                          │
+    │  REMOTE URL:  https://github.com/{USERNAME}/{REPO_NAME}.git            │
+    │  BRANCH:      main                                                      │
+    └─────────────────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 1: AUTOMATION & BUILD RULES (قوانین 1-6)
+═══════════════════════════════════════════════════════════════════════════════
+
+1. AUTOMATION STRATEGY:
+   All modifications via build.py. No manual file edits by user.
+   build.py handles: files, folders, pip, configs.
+
+2. DIRECTORY STRUCTURE:
+   Scripts in: ProjectRoot/AI_Tools/
+   Project Root = parent of AI_Tools
+   Use os.path.dirname(os.path.abspath(__file__)) for paths.
+
+3. MANDATORY CONTEXT UPDATE:
+   build.py MUST import and run context_gen.py BEFORE Git operations.
+
+4. GIT AUTOMATION:
+   After context update, build.py runs:
+   git add . → git commit → git push (all via subprocess in Root)
+
+5. EXECUTION:
+   After Git, launch main app via venv Python.
+
+6. COMPLEXITY MANAGEMENT:
+   If >3 files or >400 lines: split into phases.
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 2: ANTI-HALLUCINATION RULES (قوانین 7-11)
+═══════════════════════════════════════════════════════════════════════════════
+
+7. BEFORE ANY CODE:
+   a) State understanding
+   b) List files to create/modify
+   c) Describe changes
+   d) Ask "Proceed?" if complex
+
+8. WHEN UNCERTAIN:
+   Say "I'm not sure about X. Clarify..."
+   Never guess. Never invent requirements.
+
+9. STRICT SCOPE:
+   ❌ No unrequested features
+   ❌ No architecture changes without asking
+   ❌ No modifying unmentioned files
+   ✅ Only do what was asked
+
+10. FILE REFERENCES:
+    Only reference files in context.
+    If missing: ask before creating.
+
+11. CODE OUTPUT:
+    Show only changed parts (unless full requested).
+    Use markers: # === CHANGED START ===
+    Specify file path. Use syntax highlighting.
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 3: RESPONSE STRUCTURE (قوانین 12-14)
+═══════════════════════════════════════════════════════════════════════════════
+
+12. EVERY RESPONSE INCLUDES:
+    1. Summary of work done
+    2. Files modified/created
+    3. Warnings/notes
+    4. Next step statement
+    5. Reference code (e.g., FIX-042)
+
+13. MULTI-PART CODE:
+    Use: # ═══ PART 1 OF 3: [Desc] ═══
+    Summarize at end.
+
+14. ERROR IN RESPONSE:
+    State problem → Explain why → Suggest fix → Ask permission
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 4: CONTEXT AWARENESS (قوانین 15-17)
+═══════════════════════════════════════════════════════════════════════════════
+
+15. CONTEXT PRIORITY:
+    1. WORKFLOW rules (first)
+    2. Project structure
+    3. Existing code
+    4. User request
+
+16. FRESHNESS CHECK:
+    Note "GENERATED ON" timestamp.
+    If >24h old, suggest refresh.
+
+17. MISSING INFO:
+    Don't proceed blind. Ask for file or suggest context_gen.py run.
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 5: PROJECT-SPECIFIC (قوانین 18-20)
+═══════════════════════════════════════════════════════════════════════════════
+
+18. PROJECT TYPE: [User fills per project]
+
+19. TECHNOLOGIES: Python 3.10+, SQLite, [frameworks per project]
+
+20. CRITICAL FILES (NO DELETE):
+    AI_Tools/build.py
+    AI_Tools/context_gen.py
+    AI_Tools/WORKFLOW.txt
+    AI_Tools/setup_git.py
+    AI_Tools/ARCHITECTURE.txt
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 6: COMMUNICATION (قوانین 21-23)
+═══════════════════════════════════════════════════════════════════════════════
+
+21. LANGUAGE: Match user. Code/vars in English.
+
+22. REFERENCE CODES: End with [TOPIC]-[NUM] (e.g., BUILD-001)
+
+23. PROGRESS: Show step X of Y for multi-step tasks.
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 7: ERROR HANDLING & SYSTEM CHECKS (قوانین 24-32)
+═══════════════════════════════════════════════════════════════════════════════
+
+24. TRY-EXCEPT WRAPPING:
+    All operations in build.py wrapped in try-except.
+    Never bare except: — catch specific exceptions.
+    Log errors with log_error("SECTION", str(e))
+
+25. PRE-FLIGHT CHECKS (before network ops):
+    25.1 Internet: ping/socket test
+    25.2 DNS: resolve github.com
+    25.3 Git Remote: git ls-remote --exit-code origin
+    25.4 Python/Pip: version checks
+
+26. INTERNET CHECK FUNCTION:
+    Use socket with timeout=5.
+    Return True/False. Log result.
+
+27. NETWORK LIMITATION DETECTION:
+    DNS Failure → Log + Skip network ops
+    Filtering → Log + Warn
+    Timeout → Retry once + Log
+    Auth Error → Log + Show fix
+
+28. GIT IDENTITY AUTO-CONFIG:
+    Before commit, check user.name exists.
+    If not: use values from PART 0 Section [0.6]
+
+29. LOGGING STANDARD:
+    Format: [TIMESTAMP] [LEVEL] [SECTION] Message
+    Levels: INFO, WARN, ERROR, FATAL
+
+30. GRACEFUL EXIT:
+    Never crash abruptly.
+    Structure: try → except → finally → print_summary → sys.exit(code)
+    Codes: 0=Success, 1=Critical, 2=Unexpected, 3=Network fail
+
+31. SUBPROCESS STANDARD:
+    All external commands via run_subprocess(cmd, desc, critical=False)
+    Includes: timeout, logging, error handling, return (bool, output)
+
+32. BUILD SUMMARY REPORT:
+    Print at end: System Checks status, Operations status, Errors, Warnings, Exit Code.
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 8: DOCUMENTATION REFERENCE RULES (قوانین 33-37)
+═══════════════════════════════════════════════════════════════════════════════
+
+33. MANDATORY DOC CHECK:
+    Before implementing any feature, AI MUST check if official docs exist.
+    Never code from memory alone for libraries/APIs.
+
+34. UNKNOWN LIBRARY HANDLING:
+    If unfamiliar with a library:
+    ❌ Do NOT guess syntax
+    ✅ Ask user for docs link OR
+    ✅ State: "I need to verify X library docs before proceeding"
+
+35. API IMPLEMENTATION:
+    For any external API (exchange, service, etc.):
+    - Request official API docs
+    - Verify endpoints, parameters, auth method
+    - Never assume API structure
+
+36. VERSION SENSITIVITY:
+    Libraries change between versions.
+    If version not specified: ask or state assumption clearly.
+
+37. DOCUMENTATION PRIORITY:
+    1. Official docs (highest)
+    2. Context code examples
+    3. User description
+    4. AI knowledge (lowest — verify first)
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 9: CODE COMPACTNESS RULES (قوانین 38-40)
+═══════════════════════════════════════════════════════════════════════════════
+
+38. NAMING CONVENTION:
+    ✅ Concise but readable names (e.g., get_bal not get_user_balance_from_api)
+    ✅ Single-letter only for loops (i, j, k)
+    ✅ Descriptive for functions/classes
+
+39. CODE DENSITY:
+    ✅ Combine related operations on single line where readable
+    ✅ Use list/dict comprehensions where appropriate
+    ✅ Minimal vertical whitespace (no triple blank lines)
+    ✅ Remove excess comments (no "# this adds two numbers")
+    ❌ No decorative ASCII art in production code
+    ❌ No empty placeholder sections
+    ❌ No repeated code — extract to functions
+
+40. LINE EFFICIENCY:
+    ✅ One-liner if simple: if x: do_y()
+    ✅ Ternary where clear: result = a if cond else b
+    ❌ No multi-line when one works
+    ❌ No verbose logging for obvious operations
+    Target: Maximum clarity with minimum lines.
+
+═══════════════════════════════════════════════════════════════════════════════
+PART 10: FINAL AUTHORITY (قوانین 41-43)
+═══════════════════════════════════════════════════════════════════════════════
+
+41. WORKFLOW SUPREMACY:
+    This file (WORKFLOW.txt) is the FINAL AUTHORITY for AI behavior.
+    If conflict with other files: WORKFLOW wins.
+
+42. ARCHITECTURE RESPECT:
+    ARCHITECTURE.txt defines project-specific logic.
+    AI must follow it but cannot modify without explicit permission.
+
+43. SINGLE RESPONSIBILITY:
+    ┌────────────────────┬──────────────────────────────────────────────────┐
+    │ build.py           │ Only executor — runs all operations             │
+    │ context_gen.py     │ Only context writer — generates context file    │
+    │ setup_git.py       │ Only git initializer — one-time setup           │
+    │ WORKFLOW.txt       │ Only behavior authority — AI rules              │
+    │ ARCHITECTURE.txt   │ Only architecture authority — project logic     │
+    └────────────────────┴──────────────────────────────────────────────────┘
+    ⚠️ هیچ فایلی نباید وظیفه فایل دیگر را انجام دهد
+
+################################################################################
+#                            END OF WORKFLOW.txt                               #
+#                      VERSION 3.0 | 43 RULES | 10 PARTS                       #
+################################################################################
