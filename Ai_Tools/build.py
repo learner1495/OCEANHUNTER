@@ -1,372 +1,467 @@
-# ═══════════════════════════════════════════════════════════════
-# AI_Tools/build.py — Session 2: Network Modules
-# OCEAN HUNTER V10.8.2 — COMPLETE FILE
+# build.py — OCEAN HUNTER V10.8.2
+# Session 2.1: Repair Build (Fix main.py + Git Auto-Login)
 # ═══════════════════════════════════════════════════════════════
 
 import os
-import sys
 import subprocess
-import socket
-from datetime import datetime
-
-import context_gen
-import setup_git
+import sys
 
 # ═══════════════════════════════════════════════════════════════
-# PATHS
+# CONFIGURATION
 # ═══════════════════════════════════════════════════════════════
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(SCRIPT_DIR)
-VENV_PATH = os.path.join(ROOT, ".venv")
-VENV_PYTHON = os.path.join(VENV_PATH, "Scripts", "python.exe") if sys.platform == "win32" else os.path.join(VENV_PATH, "bin", "python")
-
-# ═══════════════════════════════════════════════════════════════
-# ERROR TRACKING
-# ═══════════════════════════════════════════════════════════════
-errors = []
-
-def log_error(step, error):
-    errors.append(f"[{step}] {error}")
-    print(f"      ⚠️ Error: {error}")
+ROOT_DIR = r"F:\OCEANHUNTER"
+AI_TOOLS_DIR = os.path.join(ROOT_DIR, "AI_Tools")
+MODULES_DIR = os.path.join(ROOT_DIR, "modules")
+VENV_PYTHON = os.path.join(ROOT_DIR, ".venv", "Scripts", "python.exe")
 
 # ═══════════════════════════════════════════════════════════════
-# SESSION 2 CONFIG
+# HELPER: Write File
 # ═══════════════════════════════════════════════════════════════
-FOLDERS = []
-MAIN_FILE = "main.py"
+def write_file(path, content):
+    """Write content to file, create dirs if needed"""
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path, 'w', encoding='utf-8') as f:
+        f.write(content)
+    print(f"      ✅ Written: {os.path.relpath(path, ROOT_DIR)}")
 
 # ═══════════════════════════════════════════════════════════════
-# FILE CONTENTS
+# STEP 1: Fix main.py (Syntax Error)
+# ═══════════════════════════════════════════════════════════════
+def step1_fix_main():
+    print("\n[1/3] 🔧 Fixing main.py...")
+    
+    main_content = '''# main.py — OCEAN HUNTER V10.8.2
 # ═══════════════════════════════════════════════════════════════
 
-ENV_CONTENT = '''# OCEAN HUNTER V10.8.2 — Environment Variables
-MODE=PAPER
-NOBITEX_API_KEY=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJ0b2tlbl9pZCI6NTM1NTY0LCJwYXlsb2FkIjp7ImNsaWVudF9pZCI6ImxlYXJuZXIxNDk1IiwidG9rZW5fdHlwZSI6InRyYWRlIiwiY3JlYXRlX3RpbWUiOjE3MzU3MjA5NjYsImV4cGlyZV90aW1lIjoxNzY3MjU2OTY2LCJzY29wZXMiOlsidHJhZGUiXX19.Vy2YCMQ0LoLqxPDqfVdvLPFCNUQkRA-_6Lo7e3rgDzM
-TELEGRAM_BOT_TOKEN=8519168043:AAEeRDhMogTxpElxgB0zUom9YzKXAnRBKew
-TELEGRAM_CHAT_ID=6539865961
-MAX_POSITION_USDT=100
-GLOBAL_STOP_LOSS_PCT=15
-'''
-
-REQUIREMENTS_CONTENT = '''requests>=2.31.0
-python-dotenv>=1.0.0
-pandas>=2.0.0
-numpy>=1.24.0
-aiohttp>=3.9.0
-'''
-
-RATE_LIMITER_CONTENT = '''import time
-import threading
-from typing import Optional
-
-class RateLimiter:
-    def __init__(self, max_tokens: int = 60, refill_seconds: float = 60.0):
-        self.max_tokens = max_tokens
-        self.tokens = max_tokens
-        self.refill_rate = max_tokens / refill_seconds
-        self.last_refill = time.time()
-        self.lock = threading.Lock()
-        self.min_spacing = 0.5
-        self.last_request = 0.0
-    
-    def _refill(self):
-        now = time.time()
-        elapsed = now - self.last_refill
-        self.tokens = min(self.max_tokens, self.tokens + elapsed * self.refill_rate)
-        self.last_refill = now
-    
-    def acquire(self, tokens: int = 1, timeout: Optional[float] = 30.0) -> bool:
-        start_time = time.time()
-        while True:
-            with self.lock:
-                self._refill()
-                spacing = time.time() - self.last_request
-                if spacing < self.min_spacing:
-                    time.sleep(self.min_spacing - spacing)
-                if self.tokens >= tokens:
-                    self.tokens -= tokens
-                    self.last_request = time.time()
-                    return True
-            if timeout and (time.time() - start_time) >= timeout:
-                return False
-            time.sleep(0.1)
-    
-    def get_status(self) -> dict:
-        with self.lock:
-            self._refill()
-            return {"tokens_available": round(self.tokens, 2), "max_tokens": self.max_tokens}
-
-_limiter = RateLimiter()
-def acquire(tokens: int = 1) -> bool:
-    return _limiter.acquire(tokens)
-def get_status() -> dict:
-    return _limiter.get_status()
-'''
-
-NOBITEX_API_CONTENT = '''import os
-import time
-import requests
-from typing import Optional, Dict, Any
-from dotenv import load_dotenv
-from . import rate_limiter
-
-load_dotenv()
-
-class NobitexAPI:
-    BASE_URL = "https://api.nobitex.ir"
-    
-    def __init__(self):
-        self.api_key = os.getenv("NOBITEX_API_KEY", "")
-        self.session = requests.Session()
-        self.session.headers.update({
-            "Authorization": f"Token {self.api_key}",
-            "Content-Type": "application/json"
-        })
-        self._last_request_time = 0
-    
-    def _request(self, method: str, endpoint: str, data: dict = None) -> Dict[str, Any]:
-        if not rate_limiter.acquire():
-            return {"status": "error", "message": "Rate limit exceeded"}
-        
-        elapsed = time.time() - self._last_request_time
-        if elapsed < 0.5:
-            time.sleep(0.5 - elapsed)
-        
-        url = f"{self.BASE_URL}{endpoint}"
-        try:
-            if method.upper() == "GET":
-                response = self.session.get(url, params=data, timeout=10)
-            else:
-                response = self.session.post(url, json=data, timeout=10)
-            self._last_request_time = time.time()
-            if response.status_code == 200:
-                return response.json()
-            return {"status": "error", "code": response.status_code}
-        except Exception as e:
-            return {"status": "error", "message": str(e)}
-    
-    def get_market_stats(self) -> Dict[str, Any]:
-        return self._request("GET", "/market/stats")
-    
-    def get_wallets(self) -> Dict[str, Any]:
-        return self._request("POST", "/users/wallets/list")
-    
-    def test_connection(self) -> Dict[str, Any]:
-        result = {"public_api": False, "private_api": False, "message": ""}
-        stats = self.get_market_stats()
-        if stats.get("status") == "ok":
-            result["public_api"] = Truewallets = self.get_wallets()
-        if wallets.get("status") == "ok":
-            result["private_api"] = True
-            result["message"] = "Full access"
-        else:
-            result["message"] = "Auth issue"
-        return result
-    
-    def get_rate_limit_status(self) -> Dict[str, Any]:
-        return rate_limiter.get_status()
-
-_client: Optional[NobitexAPI] = None
-def get_client() -> NobitexAPI:
-    global _client
-    if _client is None:
-        _client = NobitexAPI()
-    return _client
-'''
-
-TELEGRAM_BOT_CONTENT = '''import os
-import requests
-from typing import Dict, Any
-from datetime import datetime
+import os
 from dotenv import load_dotenv
 
-load_dotenv()
-
-class TelegramBot:
-    BASE_URL = "https://api.telegram.org/bot"
-    
-    def __init__(self):
-        self.token = os.getenv("TELEGRAM_BOT_TOKEN", "")
-        self.chat_id = os.getenv("TELEGRAM_CHAT_ID", "")
-        self.enabled = bool(self.token and self.chat_id)
-    
-    def send_message(self, text: str) -> Dict[str, Any]:
-        if not self.enabled:
-            return {"ok": False, "error": "Not configured"}
-        url = f"{self.BASE_URL}{self.token}/sendMessage"
-        try:
-            r = requests.post(url, json={"chat_id": self.chat_id, "text": text, "parse_mode": "HTML"}, timeout=10)
-            return r.json()
-        except Exception as e:
-            return {"ok": False, "error": str(e)}
-    
-    def send_startup(self, mode: str) -> Dict[str, Any]:
-        text = f"🚀 <b>OCEAN HUNTER STARTED</b>\\nMode: {mode}\\nTime: {datetime.now()}"
-        return self.send_message(text)
-    
-    def test_connection(self) -> Dict[str, Any]:
-        if not self.enabled:
-            return {"ok": False, "message": "Not configured"}
-        r = self.send_message("🔧 Test OK")
-        return {"ok": r.get("ok", False), "message": "Connected" if r.get("ok") else "Failed"}
-
-_bot = None
-def get_bot() -> TelegramBot:
-    global _bot
-    if _bot is None:
-        _bot = TelegramBot()
-    return _bot
-
-def send_alert(title: str, msg: str, t: str = "INFO") -> Dict[str, Any]:
-    return get_bot().send_message(f"{title}\\n{msg}")
-'''
-
-NETWORK_INIT_CONTENT = '''from .nobitex_api import NobitexAPI, get_client
-from .telegram_bot import TelegramBot, get_bot, send_alert
-from .rate_limiter import RateLimiter, acquire, get_status
-'''
-
-MAIN_PY_CONTENT = '''import os
-from dotenv import load_dotenv
 load_dotenv()
 
 def main():
     print("=" * 50)
-    print("OCEAN HUNTER V10.8.2")
+    print("🌊 OCEAN HUNTER V10.8.2")
     print("=" * 50)
+    
     mode = os.getenv("MODE", "PAPER")
-    print(f"Mode: {mode}")
+    print(f"\\n🔧 Mode: {mode}")
     
     try:
         from modules.network import get_client, get_bot
         
-        print("\\n[1] Nobitex API...")
+        # ─── Test Nobitex API ───
+        print("\\n[1/3] 🔌 Testing Nobitex API...")
         client = get_client()
-        r = client.test_connection()
-        print(f"    Public: {r['public_api']}, Private: {r['private_api']}")
+        result = client.test_connection()
+        print(f"      Public API: {'✅' if result['public_api'] else '❌'}")
+        print(f"      Private API: {'✅' if result['private_api'] else '❌'}")
+        print(f"      Message: {result['message']}")
         
-        print("\\n[2] Telegram...")
+        # ─── Test Telegram ───
+        print("\\n[2/3] 📱 Testing Telegram Bot...")
         bot = get_bot()
-        tr = bot.test_connection()
-        print(f"    Status: {tr['message']}")
-        if tr.get("ok"):
+        tg_result = bot.test_connection()
+        print(f"      Status: {tg_result['message']}")
+        
+        if tg_result.get("ok"):
             bot.send_startup(mode)
-        print("\\n[3] Rate Limiter...")
-        rl = client.get_rate_limit_status()
-        print(f"    Tokens: {rl['tokens_available']}/{rl['max_tokens']}")except Exception as e:
-        print(f"Error: {e}")
+            print("      ✅ Startup message sent!")
+        # ─── Rate Limiter Status ───
+        print("\\n[3/3] ⏱️ Rate Limiter Status...")rl_status = client.get_rate_limit_status()
+        print(f"      Tokens: {rl_status['tokens_available']}/{rl_status['max_tokens']}")
+        print(f"      Usage: {rl_status['usage_percent']}%")
+        
+    except ImportError as e:
+        print(f"\\n❌ Import Error: {e}")
+        print("   Run build.py first to create modules.")except Exception as e:
+        print(f"\\n❌ Error: {e}")
+    
     print("\\n" + "=" * 50)
-    print("Session 2 Complete")
+    print("✅ Session 2 Network Test Complete")
+    print("=" * 50)
 
 if __name__ == "__main__":
     main()
 '''
+    
+    write_file(os.path.join(ROOT_DIR, "main.py"), main_content)
 
 # ═══════════════════════════════════════════════════════════════
-# FILES DICT
+# STEP 2: Update setup_git.py (V3.0 with Auto-Login)
 # ═══════════════════════════════════════════════════════════════
-NEW_FILES = {
-    "modules/network/rate_limiter.py": RATE_LIMITER_CONTENT,
-    "modules/network/nobitex_api.py": NOBITEX_API_CONTENT,
-    "modules/network/telegram_bot.py": TELEGRAM_BOT_CONTENT,
-    "modules/network/__init__.py": NETWORK_INIT_CONTENT,
-}
+def step2_fix_setup_git():
+    print("\n[2/3] 🐙 Updating setup_git.py to V3.0...")
+    
+    setup_git_content = '''# AI_Tools/setup_git.py — V3.0 (Auto-Login via Browser)
+# ═══════════════════════════════════════════════════════════════
+# ویژگی‌ها:
+# 1. استفاده از Git Credential Manager
+# 2. باز کردن خودکار مرورگر برای لاگین
+# 3. کاملاً اتوماتیک — بدون input()
+# ═══════════════════════════════════════════════════════════════
 
-MODIFY_FILES = {
-    ".env": ENV_CONTENT,
-    "requirements.txt": REQUIREMENTS_CONTENT,
-    "main.py": MAIN_PY_CONTENT,
-}
+import os
+import subprocess
+import webbrowser
+from datetime import datetime
+import time
 
 # ═══════════════════════════════════════════════════════════════
-# BUILD STEPS
+# CONFIGURATION
 # ═══════════════════════════════════════════════════════════════
-def step1_system():
-    print("\n[1/9] System Check...")
+GITHUB_USERNAME = "learner1495"
+GITHUB_EMAIL = "mostafa53548188@gmail.com"
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT_DIR = os.path.dirname(SCRIPT_DIR)
+PROJECT_NAME = os.path.basename(ROOT_DIR)
+REMOTE_URL = f"https://github.com/{GITHUB_USERNAME}/{PROJECT_NAME}.git"
+REPO_WEB_URL = f"https://github.com/{GITHUB_USERNAME}/{PROJECT_NAME}"
+
+# ═══════════════════════════════════════════════════════════════
+# HELPER: Run Git Command
+# ═══════════════════════════════════════════════════════════════
+def run_git(command, show_error=True, timeout=120):
+    """Execute git command in ROOT_DIR"""
     try:
-        socket.create_connection(("8.8.8.8", 53), timeout=3)
-        print("      OK")
+        result = subprocess.run(
+            command,
+            shell=True,
+            cwd=ROOT_DIR,
+            capture_output=True,
+            text=True,
+            timeout=timeout
+        )
+        if result.returncode == 0:
+            return True, result.stdout.strip()
+        else:
+            if show_error and result.stderr.strip():
+                err_msg = result.stderr.strip()[:100]
+                if "fatal" in err_msg.lower() or "error" in err_msg.lower():
+                    print(f"      ⚠️ {err_msg}")
+            return False, result.stderr.strip()
+    except subprocess.TimeoutExpired:
+        print("      ❌ Command timed out")
+        return False, "timeout"
     except Exception as e:
-        log_error("Step1", e)
+        print(f"      ❌ Error: {e}")
+        return False, str(e)
 
-def step2_venv():
-    print("\n[2/9] Venv...")
-    if os.path.exists(VENV_PYTHON):
-        print("      Exists")
+# ═══════════════════════════════════════════════════════════════
+# CHECK: Git Installed?
+# ═══════════════════════════════════════════════════════════════
+def check_git_installed():
+    """Check if git is available"""
+    try:
+        result = subprocess.run(
+            "git --version",
+            shell=True,
+            capture_output=True,
+            text=True,
+            timeout=10
+        )
+        if result.returncode == 0:
+            print(f"      ✅ {result.stdout.strip()}")
+            return True
+        return False
+    except:
+        return False
+
+# ═══════════════════════════════════════════════════════════════
+# SETUP: Credential Helper (Windows)
+# ═══════════════════════════════════════════════════════════════
+def setup_credential_helper():
+    """Configure Git to use Windows Credential Manager"""
+    print("      🔐 Configuring credential helper...")
+    
+    # Try manager-core first (newer Git)
+    run_git('git config --global credential.helper manager-core', show_error=False)
+    
+    # Fallback to manager (older Git)
+    run_git('git config --global credential.helper manager', show_error=False)
+    
+    # Enable credential caching
+    run_git('git config --global credential.helper "cache --timeout=604800"', show_error=False)
+    
+    print("      ✅ Credential helper ready")
+
+# ═══════════════════════════════════════════════════════════════
+# CHECK: Repository Exists on GitHub?
+# ═══════════════════════════════════════════════════════════════
+def check_repo_exists():
+    """Check if repo exists on GitHub"""
+    print("      🔍 Checking if repo exists on GitHub...")
+    
+    success, output = run_git(f"git ls-remote {REMOTE_URL}", show_error=False, timeout=30)
+    
+    if success:
+        print("      ✅ Repository found on GitHub")
+        return True
+    elif "Repository not found" in output or "not found" in output.lower():
+        print("      ⚠️ Repository NOT found on GitHub!")
+        return False
+    elif "could not read Username" in output or "Authentication" in output:
+        print("      ⚠️ Authentication required")
+        return None  # Unknown - need auth first
     else:
-        subprocess.run([sys.executable, "-m", "venv", VENV_PATH], check=True)
-        print("      Created")
+        print(f"      ⚠️ Unknown status")
+        return None
 
-def step3_deps():
-    print("\n[3/9] Dependencies...")
-    req = os.path.join(ROOT, "requirements.txt")
-    if os.path.exists(req):
-        subprocess.run([VENV_PYTHON, "-m", "pip", "install", "-r", req, "-q"], capture_output=True)
-        print("      Installed")
+# ═══════════════════════════════════════════════════════════════
+# ACTION: Open GitHub to Create Repo
+# ═══════════════════════════════════════════════════════════════
+def open_github_create_repo():
+    """Open browser to create new repo"""
+    create_url = f"https://github.com/new?name={PROJECT_NAME}&visibility=private"
+    
+    print(f"      🌐 Opening browser to create repo...")
+    print(f"      📝 Repo name: {PROJECT_NAME}")
+    print(f"      🔗 URL: {create_url}")
+    
+    webbrowser.open(create_url)
+    
+    print("\\n      ⏳ Waiting 10 seconds for you to create the repo...")
+    print("      📌 Just click 'Create repository' button in browser")
+    time.sleep(10)
 
-def step4_folders():
-    print("\n[4/9] Folders...")
-    print("      None needed")
+# ═══════════════════════════════════════════════════════════════
+# ACTION: Open GitHub for Login
+# ═══════════════════════════════════════════════════════════════
+def open_github_login():
+    """Open browser for GitHub login"""
+    login_url = "https://github.com/login"
+    
+    print(f"      🌐 Opening GitHub login page...")
+    webbrowser.open(login_url)
+    
+    print("\\n      ⏳ Waiting 15 seconds for login...")
+    print("      📌 Please login in the browser window")
+    time.sleep(15)
 
-def step5_new_files():
-    print("\n[5/9] New Files...")
-    for path, content in NEW_FILES.items():
-        full = os.path.join(ROOT, path)
-        os.makedirs(os.path.dirname(full), exist_ok=True)
-        with open(full, "w", encoding="utf-8") as f:
-            f.write(content)
-        print(f"      Created: {path}")
+# ═══════════════════════════════════════════════════════════════
+# SETUP: Main Setup Function
+# ═══════════════════════════════════════════════════════════════
+def setup():
+    """
+    Full Git setup:
+    1. Check git installed
+    2. Create .gitignore
+    3. git init
+    4. Configure user
+    5. Setup credential helper
+    6. Set remote
+    """
+    try:
+        print(f"      📂 Root: {ROOT_DIR}")
+        print(f"      🔗 Remote: {REMOTE_URL}")
+        
+        # ─── Check Git ───
+        if not check_git_installed():
+            print("      ❌ Git not installed!")
+            print("      📥 Download: https://git-scm.com/download/win")
+            webbrowser.open("https://git-scm.com/download/win")
+            return False
+        
+        # ─── Create .gitignore ───
+        gitignore_path = os.path.join(ROOT_DIR, ".gitignore")
+        gitignore_content = """.venv/
+__pycache__/
+*.pyc
+*.pyo
+.env
+.env.local
+FULL_CODE.txt
+_SNAPSHOTS/
+*.log
+.DS_Store
+Thumbs.db
+state.json
+"""
+        if not os.path.exists(gitignore_path):
+            with open(gitignore_path, 'w', encoding='utf-8') as f:
+                f.write(gitignore_content)
+            print("      ✅ Created .gitignore")
+        else:
+            print("      ℹ️ .gitignore exists")
+        
+        # ─── Git Init ───
+        git_dir = os.path.join(ROOT_DIR, ".git")
+        if os.path.exists(git_dir):
+            print("      ℹ️ Git already initialized")
+        else:
+            success, _ = run_git("git init")
+            if success:
+                print("      ✅ Git initialized")
+            else:
+                return False
+        
+        # ─── User Config ───
+        run_git(f'git config user.name "{GITHUB_USERNAME}"', show_error=False)
+        run_git(f'git config user.email "{GITHUB_EMAIL}"', show_error=False)
+        print(f"      ✅ Git user: {GITHUB_USERNAME}")
+        
+        # ─── Credential Helper ───
+        setup_credential_helper()
+        
+        # ─── Branch ───
+        run_git("git branch -M main", show_error=False)
+        # ─── Remote ───
+        run_git("git remote remove origin", show_error=False)
+        run_git(f"git remote add origin {REMOTE_URL}", show_error=False)
+        print(f"      ✅ Remote: {REMOTE_URL}")
+        
+        return True
+        
+    except Exception as e:
+        print(f"      ❌ Setup error: {e}")
+        return False
 
-def step6_modify():
-    print("\n[6/9] Modify Files...")
-    for path, content in MODIFY_FILES.items():
-        full = os.path.join(ROOT, path)
-        with open(full, "w", encoding="utf-8") as f:
-            f.write(content)
-        print(f"      Modified: {path}")
+# ═══════════════════════════════════════════════════════════════
+# SYNC: Commit and Push (with Auto-Login)
+# ═══════════════════════════════════════════════════════════════
+def sync(message=None):
+    """
+    Commit and push with automatic browser login if needed
+    """
+    try:
+        if not message:
+            message = f"Auto-commit {datetime.now().strftime('%Y-%m-%d %H:%M')}"
+        
+        # ─── Add ───
+        success, _ = run_git("git add .")
+        if success:
+            print("      ✅ Staged changes")
+        
+        # ─── Commit ───
+        success, output = run_git(f'git commit -m "{message}"')
+        if success:
+            print(f"      ✅ Committed: {message[:40]}...")
+        elif "nothing to commit" in output.lower():
+            print("      ℹ️ Nothing to commit")
+        
+        # ─── Check Repo Exists ───
+        repo_status = check_repo_exists()
+        if repo_status == False:
+            # Repo doesn't exist - open browser to create
+            open_github_create_repo()
+            
+            # Check again
+            repo_status = check_repo_exists()
+            if not repo_status:
+                print("      ❌ Please create the repo manually and run again")
+                print(f"      🔗 https://github.com/new?name={PROJECT_NAME}")
+                return False
+        
+        # ─── Push ───
+        print("      ⏳ Pushing to GitHub...")
+        success, output = run_git("git push -u origin main", timeout=60)
+        
+        if success:
+            print("      ✅ Pushed to GitHub!")
+            print(f"      🔗 View: {REPO_WEB_URL}")
+            return True
+        
+        # ─── Handle Auth Error ───
+        if "could not read Username" in output or "Authentication" in output:
+            print("      🔑 Authentication required - opening browser...")
+            open_github_login()
+            
+            # Try again
+            print("      🔄 Retrying push...")
+            success, output = run_git("git push -u origin main", timeout=60)
+            
+            if success:
+                print("      ✅ Pushed to GitHub!")
+                return True
+        
+        # ─── Handle Rejected ───
+        if "rejected" in output.lower():
+            print("      ⚠️ Push rejected - trying force push...")
+            success, _ = run_git("git push -u origin main --force", timeout=60)
+            if success:
+                print("      ✅ Force pushed!")
+                return True
+        
+        print(f"      ⚠️ Push issue - check manually")
+        print(f"      🔗 {REPO_WEB_URL}")
+        return False
+        
+    except Exception as e:
+        print(f"      ❌ Sync error: {e}")
+        return False
+
+# ═══════════════════════════════════════════════════════════════
+# STANDALONE
+# ═══════════════════════════════════════════════════════════════
+if __name__ == "__main__":
+    print("\\n" + "═" * 50)
+    print("🐙 GIT SETUP V3.0 (Auto-Login)")
+    print("═" * 50)
+    
+    print("\\n[1/2] Setting up Git...")
+    setup()
+    
+    print("\\n[2/2] Syncing to GitHub...")
+    sync("Manual sync")
+    
+    print("\\n" + "═" * 50)
+    print("✅ Done!")
+    print("═" * 50)
+'''
+    
+    write_file(os.path.join(AI_TOOLS_DIR, "setup_git.py"), setup_git_content)
+
+# ═══════════════════════════════════════════════════════════════
+# STEP 3: Run Git Setup & Sync
+# ═══════════════════════════════════════════════════════════════
+def step3_run_git():
+    print("\n[3/3] 🐙 Running Git Setup & Sync...")
+    
+    # Import the module we just created
+    sys.path.insert(0, AI_TOOLS_DIR)
+    
+    # Clear any cached import
+    if 'setup_git' in sys.modules:
+        del sys.modules['setup_git']
+    
+    try:
+        import setup_git
+        
+        print("\n   ─── Git Setup ───")
+        setup_git.setup()
+        
+        print("\n   ─── Git Sync ───")
+        setup_git.sync("Session 2.1: Repair Build - Fixed main.py + Git V3.0")
+        
+    except Exception as e:
+        print(f"      ❌ Git error: {e}")
+        print("      📌 Run manually: python AI_Tools/setup_git.py")
 
 # ═══════════════════════════════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════════════════════════════
 def main():
-    start = datetime.now()
-    print("\n" + "=" * 50)
-    print("BUILD SESSION 2 | Network Modules")
-    print("=" * 50)
-
-    step1_system()
-    step2_venv()
-    step3_deps()
-    step4_folders()
-    step5_new_files()
-    step6_modify()
-
-    print("\n[7/9] Context...")
-    try:
-        context_gen.create_context_file()
-        print("      Done")
-    except Exception as e:
-        log_error("Context", e)
-
-    print("\n[8/9] Git...")
-    try:
-        setup_git.setup()
-        setup_git.sync("Session 2: Network Modules")
-        print("      Synced")
-    except Exception as e:
-        log_error("Git", e)
-
-    print("\n[9/9] Launch...")
-    main_path = os.path.join(ROOT, MAIN_FILE)
-    if os.path.exists(main_path):
-        subprocess.run([VENV_PYTHON, main_path], cwd=ROOT)
-
-    print("\n" + "=" * 50)
-    if errors:
-        print(f"Done with {len(errors)} error(s)")
-    else:
-        print("BUILD COMPLETE")
-    print("=" * 50)
+    print("=" * 60)
+    print("🌊 OCEAN HUNTER V10.8.2 — Build Session 2.1 (Repair)")
+    print("=" * 60)
+    print("📋 This build will:")
+    print("   1. Fix main.py (Syntax Error)")
+    print("   2. Update setup_git.py to V3.0 (Auto-Login)")
+    print("   3. Push to GitHub (opens browser if needed)")
+    print("=" * 60)
+    
+    # Execute steps
+    step1_fix_main()
+    step2_fix_setup_git()
+    step3_run_git()
+    
+    print("\n" + "=" * 60)
+    print("✅ BUILD SESSION 2.1 COMPLETE")
+    print("=" * 60)
+    print("\n📌 Next: Test with:")
+    print(f"   cd {ROOT_DIR}")
+    print("   .\\.venv\\Scripts\\python.exe main.py")
+    print("=" * 60)
 
 if __name__ == "__main__":
     main()
