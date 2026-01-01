@@ -1,12 +1,12 @@
 ################################################################################
 #                    🔒 CRITICAL WORKFLOW & AUTOMATION RULES                   #
-#                              VERSION 3.0 - FINAL                             #
-#                           43 RULES | 9 PARTS + PART 0                        #
+#                              VERSION 3.1 - FINAL#
+#                           44 RULES | 9 PARTS + PART 0                        #
 ################################################################################
 
 ═══════════════════════════════════════════════════════════════════════════════
 PART 0: SYSTEM OVERVIEW (نمای کلی سیستم — ادغام از AUTOMATION_GUIDE)
-═══════════════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════
 
 [0.1] PURPOSE:
     این سیستم به AI اجازه می‌دهد بدون دخالت دستی کاربر:
@@ -19,48 +19,46 @@ PART 0: SYSTEM OVERVIEW (نمای کلی سیستم — ادغام از AUTOMATI
     │  تمام عملیات از طریق build.py انجام می‌شود.                              │
     └─────────────────────────────────────────────────────────────────────────┘
 
-[0.3] BUILD.PY EXECUTION ORDER (ترتیب قفل‌شده — غیرقابل تغییر):
-
-    ┌──────────────────────────────────────────────────────────────────────────┐
+[0.3] BUILD.PY EXECUTION ORDER (ترتیب قفل‌شده — غیرقابل تغییر):┌──────────────────────────────────────────────────────────────────────────┐
     │  STEP 1: System Checks      → Internet, DNS, Python version             │
     │  STEP 2: venv Setup         → Create .venv if not exists                │
     │  STEP 3: pip Install        → Install from requirements.txt            │
     │  STEP 4: Folder Creation    → Create project directories               │
     │  STEP 5: File Creation      → Create/modify project files              │
-    │  STEP 6: Context Generation → Run context_gen.py                       │
-    │  STEP 7: Git Init           → Run setup_git.py (if .git not exists)    │
-    │  STEP 8: Git Sync           → git add . && commit && push              │
+    │  STEP 6: Context Generation → Run context_gen.create_context_file()    │
+    │  STEP 7: Git Init           → Run setup_git.setup() (ONLY if no .git)  │
+    │  STEP 8: Git Sync→ Run setup_git.sync() (ALWAYS)            │
     │  STEP 9: App Launch         → Run main.py via venv Python              │
-    └──────────────────────────────────────────────────────────────────────────┘
+    └──────────────────────────────────────────┘
 
 [0.4] FILE RESPONSIBILITIES:
 
     ┌────────────────────┬────────────────────────────────────────────────────┐
-    │ WORKFLOW.txt       │ قوانین رفتار AI + تنظیمات ثابت (این فایل)          │
+    │ WORKFLOW.txt       │ قوانین رفتار AI + تنظیمات ثابت (این فایل)│
     │ ARCHITECTURE.txt   │ معماری و استراتژی خاص پروژه                       │
     │ context_gen.py     │ تولید LATEST_PROJECT_CONTEXT.txt                  │
-    │ setup_git.py       │ راه‌اندازی اولیه Git (یکبار)                       │
+    │ setup_git.py       │ Git manager: setup() یکبار | sync() هر بیلد       │
     │ build.py           │ اجرای تمام عملیات (Template — AI پر می‌کند)        │
     └────────────────────┴────────────────────────────────────────────────────┘
 
 [0.5] CONTEXT & BACKUP LOCATION:
     ✅ LATEST_PROJECT_CONTEXT.txt → داخل AI_Tools/
-    ✅ context_backups/           → داخل AI_Tools/
-    ❌ Root پروژه باید تمیز بماند
+    ✅ context_backups/           → داخل AI_Tools/❌ Root پروژه باید تمیز بماند
 
 [0.6] GIT CONFIGURATION (ثابت برای تمام پروژه‌ها):
 
-    ┌─────────────────────────────────────────────────────────────────────────┐
+    ┌─────────────────────────────────────────┐
     │  USERNAME:    learner1495                                               │
     │  EMAIL:       mostafa53548188@gmail.com                                 │
     │  REPO NAME:   = نام پوشه Root پروژه (اتوماتیک)                          │
-    │  REMOTE URL:  https://github.com/{USERNAME}/{REPO_NAME}.git            │
+    │  REMOTE URL:  https://github.com/{USERNAME}/{REPO_NAME}.git│
     │  BRANCH:      main                                                      │
+    │  AUTH METHOD: Git Credential Manager (Browser OAuth)                   │
     └─────────────────────────────────────────────────────────────────────────┘
 
 ═══════════════════════════════════════════════════════════════════════════════
 PART 1: AUTOMATION & BUILD RULES (قوانین 1-6)
-═══════════════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════
 
 1. AUTOMATION STRATEGY:
    All modifications via build.py. No manual file edits by user.
@@ -72,11 +70,12 @@ PART 1: AUTOMATION & BUILD RULES (قوانین 1-6)
    Use os.path.dirname(os.path.abspath(__file__)) for paths.
 
 3. MANDATORY CONTEXT UPDATE:
-   build.py MUST import and run context_gen.py BEFORE Git operations.
+   build.py MUST import and run context_gen.create_context_file() BEFORE Git.
 
 4. GIT AUTOMATION:
-   After context update, build.py runs:
-   git add . → git commit → git push (all via subprocess in Root)
+   After context update, build.py calls setup_git.sync()
+   sync() handles: git add . → git commit → git push
+   ⚠️ build.py نباید مستقیم git command اجرا کند — فقط از setup_git استفاده کند
 
 5. EXECUTION:
    After Git, launch main app via venv Python.
@@ -115,7 +114,7 @@ PART 2: ANTI-HALLUCINATION RULES (قوانین 7-11)
 
 ═══════════════════════════════════════════════════════════════════════════════
 PART 3: RESPONSE STRUCTURE (قوانین 12-14)
-═══════════════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════
 
 12. EVERY RESPONSE INCLUDES:
     1. Summary of work done
@@ -163,7 +162,7 @@ PART 5: PROJECT-SPECIFIC (قوانین 18-20)
     AI_Tools/setup_git.py
     AI_Tools/ARCHITECTURE.txt
 
-═══════════════════════════════════════════════════════════════════════════════
+═══════════════════════════════════════════════
 PART 6: COMMUNICATION (قوانین 21-23)
 ═══════════════════════════════════════════════════════════════════════════════
 
@@ -174,7 +173,7 @@ PART 6: COMMUNICATION (قوانین 21-23)
 23. PROGRESS: Show step X of Y for multi-step tasks.
 
 ═══════════════════════════════════════════════════════════════════════════════
-PART 7: ERROR HANDLING & SYSTEM CHECKS (قوانین 24-32)
+PART 7: ERROR HANDLING & SYSTEM CHECKS (قوانین 24-33)
 ═══════════════════════════════════════════════════════════════════════════════
 
 24. TRY-EXCEPT WRAPPING:
@@ -193,8 +192,7 @@ PART 7: ERROR HANDLING & SYSTEM CHECKS (قوانین 24-32)
     Return True/False. Log result.
 
 27. NETWORK LIMITATION DETECTION:
-    DNS Failure → Log + Skip network ops
-    Filtering → Log + Warn
+    DNS Failure → Log + Skip network opsFiltering → Log + Warn
     Timeout → Retry once + Log
     Auth Error → Log + Show fix
 
@@ -218,55 +216,65 @@ PART 7: ERROR HANDLING & SYSTEM CHECKS (قوانین 24-32)
 32. BUILD SUMMARY REPORT:
     Print at end: System Checks status, Operations status, Errors, Warnings, Exit Code.
 
+33. GIT AUTHENTICATION STANDARD:
+    ┌─────────────────────────────────────────────────────────────────────────┐
+    │  METHOD: Git Credential Manager (GCM) — Browser-based OAuth│
+    │  TRIGGER: First push OR when credentials expire                        │
+    │  BEHAVIOR: Opens browser → User logs in → Token cached automatically   │
+    │  FALLBACK: If no browser, show manual token instructions│
+    │  CONFIG: credential.helper=manager (Windows) | manager-core (Linux)    │
+    └─────────────────────────────────────────────────────────────────────────┘
+    ⚠️ هرگز از Personal Access Token در کد استفاده نشود
+    ⚠️ هرگز password در plaintext ذخیره نشود
+
 ═══════════════════════════════════════════════════════════════════════════════
-PART 8: DOCUMENTATION REFERENCE RULES (قوانین 33-37)
+PART 8: DOCUMENTATION REFERENCE RULES (قوانین 34-38)
 ═══════════════════════════════════════════════════════════════════════════════
 
-33. MANDATORY DOC CHECK:
+34. MANDATORY DOC CHECK:
     Before implementing any feature, AI MUST check if official docs exist.
     Never code from memory alone for libraries/APIs.
 
-34. UNKNOWN LIBRARY HANDLING:
+35. UNKNOWN LIBRARY HANDLING:
     If unfamiliar with a library:
     ❌ Do NOT guess syntax
     ✅ Ask user for docs link OR
     ✅ State: "I need to verify X library docs before proceeding"
 
-35. API IMPLEMENTATION:
+36. API IMPLEMENTATION:
     For any external API (exchange, service, etc.):
     - Request official API docs
     - Verify endpoints, parameters, auth method
     - Never assume API structure
 
-36. VERSION SENSITIVITY:
+37. VERSION SENSITIVITY:
     Libraries change between versions.
     If version not specified: ask or state assumption clearly.
 
-37. DOCUMENTATION PRIORITY:
+38. DOCUMENTATION PRIORITY:
     1. Official docs (highest)
     2. Context code examples
     3. User description
     4. AI knowledge (lowest — verify first)
 
 ═══════════════════════════════════════════════════════════════════════════════
-PART 9: CODE COMPACTNESS RULES (قوانین 38-40)
+PART 9: CODE COMPACTNESS RULES (قوانین 39-41)
 ═══════════════════════════════════════════════════════════════════════════════
 
-38. NAMING CONVENTION:
+39. NAMING CONVENTION:
     ✅ Concise but readable names (e.g., get_bal not get_user_balance_from_api)
     ✅ Single-letter only for loops (i, j, k)
     ✅ Descriptive for functions/classes
 
-39. CODE DENSITY:
+40. CODE DENSITY:
     ✅ Combine related operations on single line where readable
     ✅ Use list/dict comprehensions where appropriate
     ✅ Minimal vertical whitespace (no triple blank lines)
-    ✅ Remove excess comments (no "# this adds two numbers")
-    ❌ No decorative ASCII art in production code
+    ✅ Remove excess comments (no "# this adds two numbers")❌ No decorative ASCII art in production code
     ❌ No empty placeholder sections
     ❌ No repeated code — extract to functions
 
-40. LINE EFFICIENCY:
+41. LINE EFFICIENCY:
     ✅ One-liner if simple: if x: do_y()
     ✅ Ternary where clear: result = a if cond else b
     ❌ No multi-line when one works
@@ -274,28 +282,28 @@ PART 9: CODE COMPACTNESS RULES (قوانین 38-40)
     Target: Maximum clarity with minimum lines.
 
 ═══════════════════════════════════════════════════════════════════════════════
-PART 10: FINAL AUTHORITY (قوانین 41-43)
-═══════════════════════════════════════════════════════════════════════════════
+PART 10: FINAL AUTHORITY (قوانین 42-44)
+═══════════════════════════════════════════════
 
-41. WORKFLOW SUPREMACY:
+42. WORKFLOW SUPREMACY:
     This file (WORKFLOW.txt) is the FINAL AUTHORITY for AI behavior.
     If conflict with other files: WORKFLOW wins.
 
-42. ARCHITECTURE RESPECT:
+43. ARCHITECTURE RESPECT:
     ARCHITECTURE.txt defines project-specific logic.
     AI must follow it but cannot modify without explicit permission.
 
-43. SINGLE RESPONSIBILITY:
+44. SINGLE RESPONSIBILITY:
     ┌────────────────────┬──────────────────────────────────────────────────┐
     │ build.py           │ Only executor — runs all operations             │
     │ context_gen.py     │ Only context writer — generates context file    │
-    │ setup_git.py       │ Only git initializer — one-time setup           │
-    │ WORKFLOW.txt       │ Only behavior authority — AI rules              │
+    │ setup_git.py       │ Git manager — setup() once + sync() every build │
+    │ WORKFLOW.txt       │ Only behavior authority — AI rules│
     │ ARCHITECTURE.txt   │ Only architecture authority — project logic     │
     └────────────────────┴──────────────────────────────────────────────────┘
     ⚠️ هیچ فایلی نباید وظیفه فایل دیگر را انجام دهد
 
 ################################################################################
-#                            END OF WORKFLOW.txt                               #
-#                      VERSION 3.0 | 43 RULES | 10 PARTS                       #
+#END OF WORKFLOW.txt                               #
+#VERSION 3.1 | 44 RULES | 10 PARTS                       #
 ################################################################################
