@@ -59,7 +59,8 @@ def main():
     # ─── 3. نمایش Rate Limiter ───
     print("\n[3/3] ⏱️ Rate Limiter Status...")
     try:
-        from modules.network import get_statusrl_status = get_status()
+        from modules.network import get_status
+        rl_status = get_status()
         print(f"      Tokens: {rl_status['tokens_available']}/{rl_status['max_tokens']}")
         print(f"      Usage:  {rl_status['usage_percent']}%")
 
