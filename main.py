@@ -35,13 +35,15 @@ def main():
             bot.send_startup(mode)
             print("      ✅ Startup message sent!")
         # ─── Rate Limiter Status ───
-        print("\n[3/3] ⏱️ Rate Limiter Status...")rl_status = client.get_rate_limit_status()
+        print("\n[3/3] ⏱️ Rate Limiter Status...")
+        rl_status = client.get_rate_limit_status()
         print(f"      Tokens: {rl_status['tokens_available']}/{rl_status['max_tokens']}")
         print(f"      Usage: {rl_status['usage_percent']}%")
         
     except ImportError as e:
         print(f"\n❌ Import Error: {e}")
-        print("   Run build.py first to create modules.")except Exception as e:
+        print("   Run build.py first to create modules.")
+    except Exception as e:
         print(f"\n❌ Error: {e}")
     
     print("\n" + "=" * 50)
