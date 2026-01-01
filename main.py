@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 """
 OCEAN HUNTER V10.8.2 — Main Entry Point
-تست اتصال به Nobitex و Telegram
 """
 
 import os
@@ -27,8 +26,10 @@ def main():
         client = get_client()
         result = client.test_connection()
 
-        print(f"      Public API:  {'✅' if result['public_api'] else '❌'}")
-        print(f"      Private API: {'✅' if result['private_api'] else '❌'}")
+        pub = "✅" if result["public_api"] else "❌"
+        prv = "✅" if result["private_api"] else "❌"
+        print(f"      Public API:  {pub}")
+        print(f"      Private API: {prv}")
         print(f"      Message: {result['message']}")
 
     except Exception as e:
@@ -49,7 +50,8 @@ def main():
             if response.get("ok"):
                 print("      ✅ Telegram message sent!")
             else:
-                print(f"      ⚠️ Telegram error: {response.get('error', 'Unknown')}")
+                err = response.get("error", "Unknown")
+                print(f"      ⚠️ Telegram error: {err}")
         else:
             print("      ⚠️ Telegram not configured")
 
@@ -59,10 +61,12 @@ def main():
     # ─── 3. نمایش Rate Limiter ───
     print("\n[3/3] ⏱️ Rate Limiter Status...")
     try:
-        from modules.network import get_status
-        rl_status = get_status()
-        print(f"      Tokens: {rl_status['tokens_available']}/{rl_status['max_tokens']}")
-        print(f"      Usage:  {rl_status['usage_percent']}%")
+        from modules.network import get_statusrl_status = get_status()
+        tokens = rl_status.get("tokens_available", "N/A")
+        max_t = rl_status.get("max_tokens", "N/A")
+        usage = rl_status.get("usage_percent", "N/A")
+        print(f"      Tokens: {tokens}/{max_t}")
+        print(f"      Usage:  {usage}%")
 
     except Exception as e:
         print(f"      ❌ Error: {e}")
@@ -71,7 +75,6 @@ def main():
     print("\n" + "=" * 50)
     print("✅ ALL TESTS COMPLETE")
     print("=" * 50 + "\n")
-
 
 if __name__ == "__main__":
     main()
