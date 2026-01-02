@@ -6,12 +6,12 @@ import os
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Apply Smart DNS Patch
+# Apply Patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 try:
     from modules.network.dns_bypass import apply_patch
     apply_patch()
-    print("✅ Smart DNS Engine Activated")
+    print("✅ Precision DNS Engine Activated")
 except ImportError:
     print("⚠️ Could not load DNS Bypass")
 
@@ -32,7 +32,6 @@ class NobitexAPI:
         
         try:
             print(f"   📡 Connecting to {url} ...")
-            # Verify=False is needed because SNI might mismatch slightly with direct IP injection
             response = self.session.get(url, params=params, timeout=20, verify=False)
             
             if response.status_code == 200:

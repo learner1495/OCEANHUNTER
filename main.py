@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""OCEAN HUNTER V5.8.2 — SMART LOOKUP"""
+"""OCEAN HUNTER V5.8.3 — PRECISION FILTER"""
 import os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from modules.network.nobitex_api import NobitexAPI
 
 def main():
     print("\n" + "=" * 60)
-    print("🚀 OCEAN HUNTER V5.8.2 — SMART DNS LOOKUP")
+    print("🚀 OCEAN HUNTER V5.8.3 — PRECISION FILTER")
     print("=" * 60)
 
     print("\n[TEST] Initializing...")
