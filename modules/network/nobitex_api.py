@@ -11,15 +11,16 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 try:
     from modules.network.dns_bypass import apply_patch
     apply_patch()
-    print("✅ Precision DNS Engine Activated")
-except ImportError:
-    print("⚠️ Could not load DNS Bypass")
+    print("✅ DoH DNS Engine Activated")
+except ImportError as e:
+    print(f"⚠️ Could not load DNS Bypass: {e}")
 
 class NobitexAPI:
     BASE_URL = "https://api.nobitex.ir"
 
     def __init__(self):
         self.session = requests.Session()
+        # CRITICAL: Disable proxies for the main connection too
         self.session.trust_env = False 
         self.session.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36",
@@ -32,6 +33,7 @@ class NobitexAPI:
         
         try:
             print(f"   📡 Connecting to {url} ...")
+            # verify=False is needed because we might be using a direct IP which doesn't match the SSL cert
             response = self.session.get(url, params=params, timeout=20, verify=False)
             
             if response.status_code == 200:

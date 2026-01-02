@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""OCEAN HUNTER V5.8.3 — PRECISION FILTER"""
+"""OCEAN HUNTER V5.8.4 — DoH & STATIC"""
 import os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from modules.network.nobitex_api import NobitexAPI
 
 def main():
     print("\n" + "=" * 60)
-    print("🚀 OCEAN HUNTER V5.8.3 — PRECISION FILTER")
+    print("🚀 OCEAN HUNTER V5.8.4 — DoH & STATIC FALLBACK")
     print("=" * 60)
 
     print("\n[TEST] Initializing...")
