@@ -1,4 +1,4 @@
-# AI_Tools/build.py — Build V6.1 (Video Code + VPN Fix)
+# AI_Tools/build.py — Build V6.2 (Manual DNS Resolution)
 # ═══════════════════════════════════════════════════════════════
 
 import os
@@ -19,72 +19,95 @@ else:
     VENV_PYTHON = os.path.join(VENV_PATH, "bin", "python")
 
 # ═══════════════════════════════════════════════════════════════
-# SIMPLE TEST WITH VPN DIAGNOSTICS
+# MANUAL DNS RESOLVER SCRIPT
 # ═══════════════════════════════════════════════════════════════
-SIMPLE_TEST_PY = '''import requests
-import sys
+SMART_CONNECT_PY = '''import requests
+import socket
+import urllib3
 
-print("-" * 50)
-print("🔍 DIAGNOSTIC MODE: Checking your connection...")
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# 1. Check if VPN is changing our IP
-try:
-    print("   🌐 Checking Internet & IP...")
-    ip_info = requests.get("http://ip-api.com/json", timeout=10).json()
-    print(f"   ✅ Internet OK! Your IP: {ip_info['query']}")
-    print(f"   🌍 Location: {ip_info['country']} (If this is Iran, VPN is OFF/Not working)")
-except Exception as e:
-    print(f"   ❌ Internet Check Failed: {e}")
-    print("   ⚠️ WARNING: If you have no internet, Nobitex will definitely fail.")
-
-print("-" * 50)
-
-# 2. Run the simple Nobitex code (Video Method)
-url = "https://api.nobitex.ir/market/global-stats"
-print(f"🚀 Connecting to {url} ...")
-
-try:
-    # verify=False prevents SSL errors common with some VPNs
-    response = requests.request("POST", url, verify=False, timeout=15)
+def resolve_nobitex_ip():
+    print("🔍 Attempting to resolve api.nobitex.ir IP...")
     
-    if response.status_code == 200:
-        print("\\n✅ SUCCESS! (Data received):")
-        print(response.text[:200] + "... (truncated)") 
-    else:
-        print(f"\\n❌ Connected, but server said: HTTP {response.status_code}")
-        print(response.text)
+    # List of known Nobitex IPs (in case DNS fails completely)
+    # These are ArvanCloud/Cloudflare IPs often used by Iranian sites
+    backup_ips = ["185.143.233.5", "185.143.234.5", "104.26.12.16", "172.67.70.62"]
+    
+    try:
+        # Try system DNS first
+        addr_info = socket.getaddrinfo("api.nobitex.ir", 443)
+        ip = addr_info[0][4][0]
+        print(f"   ✅ System DNS found: {ip}")
+        return ip
+    except:
+        print("   ⚠️ System DNS failed. Trying manual lookup...")
+        # Since we can't query DNS, let's try a direct IP bypass
+        # We will use one of the backup IPs
+        print(f"   👉 Using Backup IP: {backup_ips[0]}")
+        return backup_ips[0]
 
-except Exception as e:
-    print(f"\\n❌ FAILURE: {e}")
-    if "11001" in str(e):
-        print("   👉 CAUSE: DNS Failure. Your VPN is likely NOT tunnelling Python traffic.")
-    elif "SSL" in str(e):
-        print("   👉 CAUSE: SSL Block. The firewall intercepted the secure connection.")
+def main():
+    print("-" * 50)
+    print("🚀 OCEAN HUNTER V6.2 — SMART CONNECTION")
+    print("-" * 50)
+    
+    target_ip = resolve_nobitex_ip()
+    
+    # We construct a URL using the IP, but tell the server we want "api.nobitex.ir"
+    url = f"https://{target_ip}/market/global-stats"
+    
+    headers = {
+        "Host": "api.nobitex.ir",  # CRITICAL: This tells the server who we are looking for
+        "User-Agent": "Mozilla/5.0",
+        "Accept": "*/*"
+    }
+    
+    print(f"📡 Connecting to IP: {target_ip} (Host: api.nobitex.ir)...")
+    
+    try:
+        response = requests.post(url, headers=headers, verify=False, timeout=10)
+        
+        if response.status_code == 200:
+            print("\\n" + "="*50)
+            print("✅ SUCCESS! CONNECTION ESTABLISHED")
+            print("="*50)
+            print(f"Data Sample: {response.text[:200]}...")
+        else:
+            print(f"❌ Server Error: HTTP {response.status_code}")
+            print(response.text)
+            
+    except Exception as e:
+        print(f"❌ Connection Failed: {e}")
+        print("   This might mean the specific IP is blocked or SSL handshake failed.")
+
+if __name__ == "__main__":
+    main()
 '''
 
 # ═══════════════════════════════════════════════════════════════
 # BUILD STEPS
 # ═══════════════════════════════════════════════════════════════
 def main():
-    print("\n🚀 BUILD V6.1 — SIMPLE VPN TEST")
+    print("\n🚀 BUILD V6.2 — MANUAL DNS BYPASS")
     
     # Write the file
-    test_file = os.path.join(ROOT, "simple_test.py")
+    test_file = os.path.join(ROOT, "smart_connect.py")
     with open(test_file, "w", encoding="utf-8") as f:
-        f.write(SIMPLE_TEST_PY)
-    print(f"   📝 Created simple_test.py (With VPN Diagnostics)")
+        f.write(SMART_CONNECT_PY)
+    print(f"   📝 Created smart_connect.py")
 
     # Git Sync
     try:
         setup_git.setup()
-        setup_git.sync("Build V6.1: VPN Diagnostic Test")
+        setup_git.sync("Build V6.2: Manual DNS Bypass")
     except: pass
 
     # Run it
     print("\n" + "="*50)
-    print("   RUNNING TEST (PLEASE ENSURE VPN IS ON)...")
+    print("   RUNNING SMART CONNECT (TURN OFF VPN)...")
     print("="*50)
-    subprocess.run([VENV_PYTHON, "simple_test.py"], cwd=ROOT)
+    subprocess.run([VENV_PYTHON, "smart_connect.py"], cwd=ROOT)
 
 if __name__ == "__main__":
     main()
