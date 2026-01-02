@@ -13,14 +13,16 @@ class DataCollector:
         self.storage = get_storage()
         self.symbols = self.DEFAULT_SYMBOLS.copy()
 
-    def fetch_ohlcv(self, symbol: str, resolution: str = "15") -> List[Dict]:
+    def fetch_ohlcv(self, symbol: str, resolution: str = "60") -> List[Dict]:
         try:
             now = int(time.time())
-            from_ts = now - (24 * 60 * 60)
+            from_ts = now - (24 * 60 * 60) # Last 24h
             result = self.client.get_ohlcv(symbol=symbol, resolution=resolution, from_ts=from_ts, to_ts=now)
+            
             if result.get("s") != "ok":
-                print(f"[Collector] API error for {symbol}: {result.get('s', 'unknown')}")
+                # print(f"[Collector] API error for {symbol}: {result.get('s', 'unknown')}")
                 return []
+                
             candles = []
             timestamps = result.get("t", [])
             opens = result.get("o", [])
@@ -28,14 +30,15 @@ class DataCollector:
             lows = result.get("l", [])
             closes = result.get("c", [])
             volumes = result.get("v", [])
+            
             for i in range(len(timestamps)):
                 candles.append({
                     "timestamp": timestamps[i],
-                    "open": opens[i] if i < len(opens) else 0,
-                    "high": highs[i] if i < len(highs) else 0,
-                    "low": lows[i] if i < len(lows) else 0,
-                    "close": closes[i] if i < len(closes) else 0,
-                    "volume": volumes[i] if i < len(volumes) else 0
+                    "open": float(opens[i]) if i < len(opens) else 0,
+                    "high": float(highs[i]) if i < len(highs) else 0,
+                    "low": float(lows[i]) if i < len(lows) else 0,
+                    "close": float(closes[i]) if i < len(closes) else 0,
+                    "volume": float(volumes[i]) if i < len(volumes) else 0
                 })
             return candles
         except Exception as e:
@@ -46,8 +49,10 @@ class DataCollector:
         result = {"symbol": symbol, "success": False, "candles_fetched": 0, "candles_saved": 0}
         candles = self.fetch_ohlcv(symbol)
         result["candles_fetched"] = len(candles)
+        
         if not candles:
             return result
+            
         saved = self.storage.save_ohlcv(symbol, candles)
         if saved:
             result["success"] = True
@@ -56,16 +61,21 @@ class DataCollector:
 
     def collect_all(self) -> Dict[str, Any]:
         results = {"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "symbols": {}, "total_candles": 0, "success_count": 0}
+        
         for symbol in self.symbols:
-            print(f"      📊 Collecting {symbol}...")
+            # print(f"      📊 Collecting {symbol}...")
             res = self.collect_symbol(symbol)
             results["symbols"][symbol] = res
             results["total_candles"] += res["candles_fetched"]
+            
             if res["success"]:
-                results["success_count"] += 1print(f"         ✅ {res['candles_fetched']} candles")
+                results["success_count"] += 1
+                # print(f"         ✅ {res['candles_fetched']} candles")
             else:
-                print(f"         ❌ Failed")
-            time.sleep(1)
+                pass
+                # print(f"         ❌ Failed")
+            time.sleep(0.5)
+            
         return results
 
     def get_summary(self) -> Dict[str, Any]:

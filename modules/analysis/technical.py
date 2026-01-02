@@ -18,7 +18,9 @@ def calculate_rsi(prices, period=14):
             gains.append(0)
             losses.append(abs(delta))
             
-    # Simple Average (SMMA approximation for initial test)
+    if not gains: return 50
+    
+    # Simple Average (SMMA approximation)
     avg_gain = sum(gains[-period:]) / period
     avg_loss = sum(losses[-period:]) / period
     

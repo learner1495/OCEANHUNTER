@@ -1,4 +1,4 @@
-# AI_Tools/build.py — Build V5.7 (Real Data / Mock Alert)
+# AI_Tools/build.py — Build V5.7.1 (Syntax Fix)
 # ═══════════════════════════════════════════════════════════════
 
 import os
@@ -22,10 +22,105 @@ else:
     VENV_PYTHON = os.path.join(VENV_PATH, "bin", "python")
 
 # ═══════════════════════════════════════════════════════════════
-# NEW FILES CONTENT
+# FILE CONTENTS (FIXED)
 # ═══════════════════════════════════════════════════════════════
 
-# 1. TECHNICAL ANALYSIS MODULE (Simplified for V5.7)
+# 1. FIXED COLLECTOR (The typo was here)
+COLLECTOR_PY = '''# modules/data/collector.py
+import time
+from datetime import datetime
+from typing import Dict, Any, List, Optional
+from modules.network import get_client
+from .storage import get_storage
+
+class DataCollector:
+    DEFAULT_SYMBOLS = ["BTCIRT", "ETHIRT", "USDTIRT"]
+
+    def __init__(self):
+        self.client = get_client()
+        self.storage = get_storage()
+        self.symbols = self.DEFAULT_SYMBOLS.copy()
+
+    def fetch_ohlcv(self, symbol: str, resolution: str = "60") -> List[Dict]:
+        try:
+            now = int(time.time())
+            from_ts = now - (24 * 60 * 60) # Last 24h
+            result = self.client.get_ohlcv(symbol=symbol, resolution=resolution, from_ts=from_ts, to_ts=now)
+            
+            if result.get("s") != "ok":
+                # print(f"[Collector] API error for {symbol}: {result.get('s', 'unknown')}")
+                return []
+                
+            candles = []
+            timestamps = result.get("t", [])
+            opens = result.get("o", [])
+            highs = result.get("h", [])
+            lows = result.get("l", [])
+            closes = result.get("c", [])
+            volumes = result.get("v", [])
+            
+            for i in range(len(timestamps)):
+                candles.append({
+                    "timestamp": timestamps[i],
+                    "open": float(opens[i]) if i < len(opens) else 0,
+                    "high": float(highs[i]) if i < len(highs) else 0,
+                    "low": float(lows[i]) if i < len(lows) else 0,
+                    "close": float(closes[i]) if i < len(closes) else 0,
+                    "volume": float(volumes[i]) if i < len(volumes) else 0
+                })
+            return candles
+        except Exception as e:
+            print(f"[Collector] Error fetching {symbol}: {e}")
+            return []
+
+    def collect_symbol(self, symbol: str) -> Dict[str, Any]:
+        result = {"symbol": symbol, "success": False, "candles_fetched": 0, "candles_saved": 0}
+        candles = self.fetch_ohlcv(symbol)
+        result["candles_fetched"] = len(candles)
+        
+        if not candles:
+            return result
+            
+        saved = self.storage.save_ohlcv(symbol, candles)
+        if saved:
+            result["success"] = True
+            result["candles_saved"] = len(candles)
+        return result
+
+    def collect_all(self) -> Dict[str, Any]:
+        results = {"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "symbols": {}, "total_candles": 0, "success_count": 0}
+        
+        for symbol in self.symbols:
+            # print(f"      📊 Collecting {symbol}...")
+            res = self.collect_symbol(symbol)
+            results["symbols"][symbol] = res
+            results["total_candles"] += res["candles_fetched"]
+            
+            if res["success"]:
+                results["success_count"] += 1
+                # print(f"         ✅ {res['candles_fetched']} candles")
+            else:
+                pass
+                # print(f"         ❌ Failed")
+            time.sleep(0.5)
+            
+        return results
+
+    def get_summary(self) -> Dict[str, Any]:
+        summary = {}
+        for symbol in self.symbols:
+            summary[symbol] = self.storage.get_stats(symbol)
+        return summary
+
+_collector: Optional[DataCollector] = None
+def get_collector() -> DataCollector:
+    global _collector
+    if _collector is None:
+        _collector = DataCollector()
+    return _collector
+'''
+
+# 2. TECHNICAL ANALYSIS MODULE
 TECHNICAL_PY = '''# modules/analysis/technical.py
 import math
 
@@ -46,7 +141,9 @@ def calculate_rsi(prices, period=14):
             gains.append(0)
             losses.append(abs(delta))
             
-    # Simple Average (SMMA approximation for initial test)
+    if not gains: return 50
+    
+    # Simple Average (SMMA approximation)
     avg_gain = sum(gains[-period:]) / period
     avg_loss = sum(losses[-period:]) / period
     
@@ -85,7 +182,7 @@ def analyze_market(symbol, candles):
     }
 '''
 
-# 2. UPDATED MAIN.PY (Real Data Fetcher)
+# 3. MAIN.PY (Real Data Fetcher)
 MAIN_PY = '''#!/usr/bin/env python3
 """OCEAN HUNTER V5.7 — Real Data / Mock Alert"""
 
@@ -147,6 +244,7 @@ if __name__ == "__main__":
 '''
 
 FILES_TO_CREATE = {
+    "modules/data/collector.py": COLLECTOR_PY, # Overwriting the buggy file
     "modules/analysis/technical.py": TECHNICAL_PY,
     "main.py": MAIN_PY
 }
@@ -170,22 +268,25 @@ def step2_git():
     print("\n[2/4] 🐙 Git Sync...")
     try:
         setup_git.setup()
-        setup_git.sync("Build V5.7: Real Data Scanner")
+        setup_git.sync("Build V5.7.1: Syntax Fix")
         print("      ✅ Saved to History")
     except:
         print("      ⚠️ Git skipped")
 
 def step3_context():
     print("\n[3/4] 📋 Context Update...")
-    context_gen.create_context_file()
-    print("      ✅ Context Updated")
+    try:
+        context_gen.create_context_file()
+        print("      ✅ Context Updated")
+    except:
+        pass
 
 def step4_launch():
     print("\n[4/4] 🚀 Launching Scanner...")
     subprocess.run([VENV_PYTHON, "main.py"], cwd=ROOT)
 
 def main():
-    print("\n🚀 STARTING BUILD V5.7...")
+    print("\n🚀 STARTING BUILD V5.7.1...")
     step1_create_files()
     step2_git()
     step3_context()
