@@ -1,76 +1,40 @@
 # modules/network/dns_bypass.py
 import socket
-import struct
-import random
+import subprocess
+import re
+import sys
 
-def get_ip_from_google(domain):
+# Known working IP from previous logs (as a safety net)
+# Nobitex often uses ArvanCloud/Cloudflare IPs in this range
+FALLBACK_IP = "178.22.122.100" 
+
+def get_ip_from_shell(domain):
     """
-    Queries Google DNS (8.8.8.8) directly via UDP to resolve a domain.
-    Bypasses OS DNS stack entirely.
+    Asks the Windows OS directly via nslookup command.
+    This works because your CMD/PowerShell previously proved it can resolve the IP.
     """
     try:
-        # Create a raw DNS query packet
-        # Transaction ID
-        packet = struct.pack(">H", random.randint(0, 65535))
-        # Flags (Standard Query)
-        packet += struct.pack(">H", 0x0100) 
-        # Questions: 1
-        packet += struct.pack(">H", 1)
-        # Answer RRs: 0
-        packet += struct.pack(">H", 0)
-        # Authority RRs: 0
-        packet += struct.pack(">H", 0)
-        # Additional RRs: 0
-        packet += struct.pack(">H", 0)
+        # Run nslookup
+        print(f"   🔎 Asking Windows Shell for {domain} IP...")
+        # We enforce using Google DNS (8.8.8.8) explicitly in the shell command to be sure
+        result = subprocess.check_output(f"nslookup {domain} 8.8.8.8", shell=True, text=True)
         
-        # Query Name
-        for part in domain.split('.'):
-            packet += struct.pack("B", len(part))
-            packet += part.encode("utf-8")
-        packet += struct.pack("B", 0) # End of name
+        # Extract IP addresses using Regex
+        # We look for lines that have 'Address:' or just IPs after the Name section
+        ips = re.findall(r"\b(?:\d{1,3}\.){3}\d{1,3}\b", result)
         
-        # Type: A (Host Address) = 1
-        packet += struct.pack(">H", 1)
-        # Class: IN (Internet) = 1
-        packet += struct.pack(">H", 1)
+        # Filter out 8.8.8.8 (the DNS server) and local IPs
+        valid_ips = [ip for ip in ips if not ip.startswith("8.8.8") and not ip.startswith("192.168") and not ip.startswith("127.")]
         
-        # Send to Google DNS
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(4.0)
-        sock.sendto(packet, ("8.8.8.8", 53))
-        
-        data, _ = sock.recvfrom(1024)
-        sock.close()
-        
-        # Parse Response (Skip header and query)
-        # Header is 12 bytes
-        # Query name ends with 0 byte + 4 bytes for Type/Class
-        idx = 12
-        while data[idx] != 0:
-            idx += data[idx] + 1
-        idx += 5 # Skip 0 byte + Type(2) + Class(2)
-        
-        # Check for Answer
-        # Name pointer (2) + Type(2) + Class(2) + TTL(4) + RDLength(2)
-        # If standard answer, next bytes are IP
-        if idx + 12 < len(data):
-             # Just jump to the data part for the first answer roughly
-             # (This is a simplified parser, assuming simple response)
-             # Real offset calculation:
-             # Answer Name (2 bytes usually c00c pointer)
-             # Type (2)
-             # Class (2)
-             # TTL (4)
-             # RDLength (2) -> describes IP length (4)
-             
-             # Let's find the IP at the end
-             ip_bytes = data[-4:]
-             ip = ".".join(map(str, ip_bytes))
-             return ip
-             
+        if valid_ips:
+            # Pick the last one (usually the actual answer, first one is often the DNS server)
+            best_ip = valid_ips[-1]
+            print(f"   ✅ Shell found IP: {best_ip}")
+            return best_ip
+            
     except Exception as e:
-        print(f"DNS Bypass Error: {e}")
-        return None
+        print(f"   ⚠️ Shell lookup failed: {e}")
+    
     return None
 
 # --- MONKEY PATCH ---
@@ -79,22 +43,24 @@ REAL_GETADDRINFO = socket.getaddrinfo
 def patched_getaddrinfo(host, port, family=0, type=0, proto=0, flags=0):
     """
     Intercepts Python's DNS requests.
-    If it's for Nobitex, we resolve it manually via Google.
     """
     if host == "api.nobitex.ir":
         print(f"   🛡️ Intercepted DNS for: {host}")
         
-        # 1. Try Google Direct first
-        resolved_ip = get_ip_from_google(host)
+        # 1. Try getting IP from Windows Shell (Most reliable in your case)
+        resolved_ip = get_ip_from_shell(host)
         
+        # 2. Fallback to Hardcoded if Shell fails
         if not resolved_ip:
-            # Fallback to hardcoded known IP if Google fails
-            resolved_ip = "178.22.122.100" 
-            
-        print(f"   🛡️ Resolved manually to: {resolved_ip}")
-        
+            resolved_ip = FALLBACK_IP
+            print(f"   ⚠️ Using Fallback Hardcoded IP: {resolved_ip}")
+        else:
+            print(f"   💉 Injecting IP: {resolved_ip}")
+
         # Return format expected by socket.getaddrinfo
         # (family, type, proto, canonname, sockaddr)
+        # This TRICKS requests into connecting to the IP, but keeping the Host Header 'api.nobitex.ir'
+        # This solves the 404 error we had in V5.7.7
         return [(socket.AF_INET, socket.SOCK_STREAM, 6, '', (resolved_ip, port))]
         
     return REAL_GETADDRINFO(host, port, family, type, proto, flags)

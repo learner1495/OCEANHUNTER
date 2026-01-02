@@ -1,29 +1,31 @@
 #!/usr/bin/env python3
-"""OCEAN HUNTER V5.8.0 — DNS SURGERY"""
+"""OCEAN HUNTER V5.8.1 — HYBRID RESOLVER"""
 import os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from modules.network.nobitex_api import NobitexAPI
 
 def main():
     print("\n" + "=" * 60)
-    print("🚀 OCEAN HUNTER V5.8.0 — DNS BYPASS SURGERY")
+    print("🚀 OCEAN HUNTER V5.8.1 — HYBRID SHELL RESOLVER")
     print("=" * 60)
 
-    print("\n[TEST] Initializing API with Custom DNS Engine...")
+    print("\n[TEST] Initializing API...")
     
     api = NobitexAPI()
     now = int(time.time())
     
-    print("\n[TEST] Attempting Connection to api.nobitex.ir...")
+    print("\n[TEST] Attempting Connection...")
+    # Using BTCIRT as standard test
     data = api.get_ohlcv("BTCIRT", from_ts=now-3600, to_ts=now)
     
     if data.get("s") == "ok":
         price = data['c'][-1]
-        print(f"      ✅ SUCCESS! WE HAVE DATA!")
-        print(f"      💰 Current BTC Price: {price:,.0f} IRT")
-        print("      (The DNS Bypass worked beautifully)")
+        print(f"\n" + "=" * 60)
+        print(f"✅ SUCCESS! CONNECTION ESTABLISHED!")
+        print(f"💰 BTC Price: {price:,.0f} IRT")
+        print("=" * 60)
     else:
-        print(f"      ❌ FAILED: {data.get('msg')}")
+        print(f"\n❌ FAILED: {data.get('msg')}")
         
     print("\n" + "=" * 60)
 

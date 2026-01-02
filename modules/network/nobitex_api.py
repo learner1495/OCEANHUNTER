@@ -12,7 +12,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspa
 try:
     from modules.network.dns_bypass import apply_patch
     apply_patch()
-    print("✅ DNS Bypass Engine Activated")
+    print("✅ Hybrid DNS Resolver Activated")
 except ImportError:
     print("⚠️ Could not load DNS Bypass")
 
@@ -39,9 +39,9 @@ class NobitexAPI:
         }
         
         try:
-            # We use the DOMAIN in the URL, but our patch will force the IP
-            # verify=False prevents SSL certificate matching errors if resolving is weird
-            response = self.session.get(url, params=params, timeout=15, verify=False)
+            # We use the DOMAIN name here. The monkey patch handles the IP.
+            print(f"   📡 Requesting: {url}")
+            response = self.session.get(url, params=params, timeout=20, verify=False)
             
             if response.status_code == 200:
                 data = response.json()
