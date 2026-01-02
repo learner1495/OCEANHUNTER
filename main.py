@@ -1,71 +1,58 @@
 #!/usr/bin/env python3
-"""OCEAN HUNTER V10.9 — Data Collection"""
+"""OCEAN HUNTER V5.7 — Real Data / Mock Alert"""
 
 import os
 import sys
+import time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from dotenv import load_dotenv
-load_dotenv()
+from modules.data.collector import get_collector
+from modules.analysis.technical import analyze_market
+
+# Volatile Coins to Watch
+TARGET_COINS = ["BTCIRT", "ETHIRT", "DOGEIRT", "SHIBIRT", "PEPEIRT"]
 
 def main():
-    print("\n" + "=" * 50)
-    print("🌊 OCEAN HUNTER V10.9 — Data Collection")
-    print("=" * 50)
-
-    mode = os.getenv("MODE", "PAPER")
-    print(f"\n🔧 Mode: {mode}")
-
-    print("\n[1/4] 🔌 Testing Nobitex API...")
-    try:
-        from modules.network import get_client
-        client = get_client()
-        result = client.test_connection()
-        print(f"      Public API:  {\'✅\' if result[\'public_api\'] else \'❌\'}")
-        print(f"      Private API: {\'✅\' if result[\'private_api\'] else \'❌\'}")
-    except Exception as e:
-        print(f"      ❌ Error: {e}")
-
-    print("\n[2/4] 📱 Testing Telegram Bot...")
-    try:
-        from modules.network import get_bot
-        bot = get_bot()
-        if bot.enabled:
-            response = bot.send_alert(title="OCEAN HUNTER V10.9", message="✅ Data Collection فعال شد", alert_type="SUCCESS")
-            if response.get("ok"):
-                print("      ✅ Telegram message sent!")
-            else:
-                print(f"      ⚠️ Telegram error: {response.get(\'error\', \'Unknown\')}")
+    load_dotenv()
+    print("\n" + "=" * 60)
+    print("🌊 OCEAN HUNTER V5.7 — Market Scanner (No VPN Mode)")
+    print("=" * 60)
+    
+    print("\n[1] 🔌 Connecting to Nobitex (Direct)...")
+    collector = get_collector()
+    
+    # Update symbol list
+    collector.symbols = TARGET_COINS
+    
+    print(f"      Watching: {', '.join(TARGET_COINS)}")
+    print("\n[2] 📊 Fetching & Analyzing Data...")
+    print(f"      {'SYMBOL':<10} | {'PRICE (IRT)':<15} | {'RSI':<6} | {'SIGNAL'}")
+    print("      " + "-" * 50)
+    
+    results = collector.collect_all()
+    
+    for symbol in TARGET_COINS:
+        # Get candles from storage or memory
+        candles = collector.fetch_ohlcv(symbol, resolution="60") # 1 Hour candles
+        
+        if candles:
+            # ANALYZE
+            analysis = analyze_market(symbol, candles)
+            
+            # OUTPUT (Mock Alert)
+            print(f"      {symbol:<10} | {analysis['price']:<15,} | {analysis['rsi']:<6} | {analysis['signal']}")
+            
+            # Simulation of Telegram Alert
+            if "BUY" in analysis['signal'] or "SELL" in analysis['signal']:
+                print(f"      Op >> 🔔 [MOCK TELEGRAM] Sending Alert: {analysis['reason']}")
         else:
-            print("      ⚠️ Telegram not configured")
-    except Exception as e:
-        print(f"      ❌ Error: {e}")
-
-    print("\n[3/4] ⏱️ Rate Limiter Status...")
-    try:
-        from modules.network import get_statusrl_status = get_status()
-        print(f"      Tokens: {rl_status[\'tokens_available\']}/{rl_status[\'max_tokens\']}")
-        print(f"      Usage:  {rl_status[\'usage_percent\']}%")
-    except Exception as e:
-        print(f"      ❌ Error: {e}")
-
-    print("\n[4/4] 📊 Data Collection...")
-    try:
-        from modules.data import get_collector
-        collector = get_collector()
-        results = collector.collect_all()
-        print(f"      ✅ Collected {results[\'total_candles\']} candles")
-        print(f"      📈 Symbols: {results[\'success_count\']}/{len(results[\'symbols\'])}")
-        summary = collector.get_summary()
-        for symbol, stats in summary.items():
-            if stats.get(\'exists\'):
-                print(f"      📁 {symbol}: {stats[\'rows\']} rows")
-    except Exception as e:
-        print(f"      ❌ Error: {e}")
-
-    print("\n" + "=" * 50)
-    print("✅ ALL TASKS COMPLETE")
-    print("=" * 50 + "\n")
+            print(f"      {symbol:<10} | {'ERROR':<15} | {'---':<6} | ❌ No Data")
+            
+    print("\n" + "=" * 60)
+    print("✅ SCAN COMPLETE")
+    print("👉 Note: Telegram was skipped (Mock Mode) until VPN is ready.")
+    print("=" * 60 + "\n")
 
 if __name__ == "__main__":
     main()
