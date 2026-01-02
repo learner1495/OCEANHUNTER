@@ -1,3 +1,10 @@
+# modules/network/__init__.py
 from .nobitex_api import NobitexAPI
-from .rate_limiter import RateLimiter
-from .telegram_bot import TelegramBot
+
+_client_instance = None
+
+def get_client():
+    global _client_instance
+    if _client_instance is None:
+        _client_instance = NobitexAPI()
+    return _client_instance

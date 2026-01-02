@@ -17,10 +17,12 @@ class DataCollector:
         try:
             now = int(time.time())
             from_ts = now - (24 * 60 * 60) # Last 24h
+            
+            # Calling the method on existing nobitex_api instance
             result = self.client.get_ohlcv(symbol=symbol, resolution=resolution, from_ts=from_ts, to_ts=now)
             
             if result.get("s") != "ok":
-                # print(f"[Collector] API error for {symbol}: {result.get('s', 'unknown')}")
+                # print(f"DEBUG: {result}")
                 return []
                 
             candles = []
@@ -34,15 +36,15 @@ class DataCollector:
             for i in range(len(timestamps)):
                 candles.append({
                     "timestamp": timestamps[i],
-                    "open": float(opens[i]) if i < len(opens) else 0,
-                    "high": float(highs[i]) if i < len(highs) else 0,
-                    "low": float(lows[i]) if i < len(lows) else 0,
-                    "close": float(closes[i]) if i < len(closes) else 0,
-                    "volume": float(volumes[i]) if i < len(volumes) else 0
+                    "open": float(opens[i]),
+                    "high": float(highs[i]),
+                    "low": float(lows[i]),
+                    "close": float(closes[i]),
+                    "volume": float(volumes[i])
                 })
             return candles
         except Exception as e:
-            print(f"[Collector] Error fetching {symbol}: {e}")
+            print(f"[Collector] Error processing {symbol}: {e}")
             return []
 
     def collect_symbol(self, symbol: str) -> Dict[str, Any]:
@@ -60,21 +62,13 @@ class DataCollector:
         return result
 
     def collect_all(self) -> Dict[str, Any]:
-        results = {"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "symbols": {}, "total_candles": 0, "success_count": 0}
+        results = {"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "symbols": {}, "total_candles": 0}
         
         for symbol in self.symbols:
-            # print(f"      📊 Collecting {symbol}...")
             res = self.collect_symbol(symbol)
             results["symbols"][symbol] = res
             results["total_candles"] += res["candles_fetched"]
-            
-            if res["success"]:
-                results["success_count"] += 1
-                # print(f"         ✅ {res['candles_fetched']} candles")
-            else:
-                pass
-                # print(f"         ❌ Failed")
-            time.sleep(0.5)
+            time.sleep(0.3) # Small delay to be polite
             
         return results
 
