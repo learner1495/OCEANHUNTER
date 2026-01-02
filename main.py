@@ -1,48 +1,47 @@
 #!/usr/bin/env python3
-"""OCEAN HUNTER V5.7.4 — Connectivity Diagnostic"""
-import os, sys, time
+"""OCEAN HUNTER V5.7.5 — Lab Test"""
+import os, sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-from dotenv import load_dotenv
 from modules.data.collector import get_collector
 
-TARGET_COINS = ["BTCIRT", "ETHIRT", "DOGEIRT"]
-
 def main():
-    load_dotenv()
     print("\n" + "=" * 60)
-    print("🌊 OCEAN HUNTER V5.7.4 — Direct Connection Mode")
-    print("   ⚠️  Ignoring System Proxies (Bypassing VPN settings)")
+    print("🔬 OCEAN HUNTER V5.7.5 — LAB TEST")
     print("=" * 60)
     
-    print("\n[1] 🔌 Initializing Network...")
-    try:
-        collector = get_collector()
-        print("      ✅ Collector Ready")
-    except Exception as e:
-        print(f"      ❌ Failed to init: {e}")
+    collector = get_collector()
+    
+    # TEST 1: DNS
+    print("\n[TEST 1] 🌍 DNS Resolution (api.nobitex.ir)...")
+    success, result = collector.test_connection()
+    if success:
+        print(f"      ✅ Resolved IP: {result}")
+        print("      (This means Python CAN find the server)")
+    else:
+        print(f"      ❌ DNS FAILED: {result}")
+        print("      (Python cannot find the server address)")
         return
 
-    print("\n[2] 📡 Testing Connectivity to Nobitex...")
-    print(f"      {'SYMBOL':<10} | {'STATUS':<15} | {'DETAIL'}")
-    print("      " + "-" * 50)
+    # TEST 2: HTTP REQUEST (SSL Disabled)
+    print("\n[TEST 2] 📡 Data Fetch (SSL Verify=False)...")
+    symbol = "BTCIRT"
+    candles, error = collector.fetch_ohlcv(symbol)
     
-    success_count = 0
-    for symbol in TARGET_COINS:
-        candles, error = collector.fetch_ohlcv(symbol)
-        
-        if candles:
-            last_price = candles[-1]['close']
-            print(f"      {symbol:<10} | {'✅ ONLINE':<15} | Price: {last_price:,.0f} IRT")
-            success_count += 1
-        else:
-            print(f"      {symbol:<10} | {'❌ FAILED':<15} | {error}")
-            
-    print("\n" + "=" * 60)
-    if success_count == 0:
-        print("❌ CRITICAL: No connection.")
-        print("   Suggestion: Turn OFF all VPNs completely and retry.")
+    if candles:
+        price = candles[-1]['close']
+        print(f"      ✅ SUCCESS! Price: {price:,.0f} IRT")
+        print("      (Problem was SSL Certificate. We bypassed it.)")
     else:
-        print("✅ SUCCESS: Connection Established!")
+        print(f"      ❌ CONNECTION FAILED: {error}")
+        print("      (Check error details above)")
+
+    print("\n" + "=" * 60)
+    if candles:
+        print("🎉 GREAT! We found the solution.")
+        print("   The script can now read data from Nobitex.")
+    else:
+        print("⚠️ STILL FAILING?")
+        print("   If DNS passed but HTTP failed, Firewall might be blocking python.exe")
     print("=" * 60 + "\n")
 
 if __name__ == "__main__":

@@ -1,47 +1,34 @@
 # modules/data/collector.py
 import time
-from datetime import datetime
-from typing import Dict, Any, List, Optional
+from typing import Dict, List, Optional
 from modules.network import get_client
 from .storage import get_storage
 
 class DataCollector:
-    DEFAULT_SYMBOLS = ["BTCIRT", "ETHIRT", "USDTIRT"]
-
     def __init__(self):
         self.client = get_client()
-        self.storage = get_storage()
-        self.symbols = self.DEFAULT_SYMBOLS.copy()
 
-    def fetch_ohlcv(self, symbol: str, resolution: str = "60") -> tuple[List[Dict], str]:
-        """Returns (candles, error_message)"""
+    def test_connection(self):
+        """Run DNS check"""
+        return self.client.debug_dns()
+
+    def fetch_ohlcv(self, symbol: str) -> tuple[List[Dict], str]:
         try:
             now = int(time.time())
-            from_ts = now - (24 * 60 * 60) # Last 24h
-            
-            result = self.client.get_ohlcv(symbol=symbol, resolution=resolution, from_ts=from_ts, to_ts=now)
+            from_ts = now - (24 * 60 * 60)
+            result = self.client.get_ohlcv(symbol=symbol, resolution="60", from_ts=from_ts, to_ts=now)
             
             if result.get("s") != "ok":
-                error_msg = result.get("msg", "Unknown API Error")
-                return [], error_msg
+                return [], result.get("msg", "Unknown Error")
                 
             candles = []
             timestamps = result.get("t", [])
             closes = result.get("c", [])
-            
-            # Simplified for checking connection
             for i in range(len(timestamps)):
-                candles.append({
-                    "timestamp": timestamps[i],
-                    "close": float(closes[i])
-                })
+                candles.append({"timestamp": timestamps[i], "close": float(closes[i])})
             return candles, ""
-            
         except Exception as e:
             return [], str(e)
-
-    def collect_all(self):
-        pass # Not used in main right now
 
 _collector: Optional[DataCollector] = None
 def get_collector() -> DataCollector:
