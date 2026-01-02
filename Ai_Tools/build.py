@@ -1,7 +1,6 @@
-# AI_Tools/build.py — V5.2 (Network Layer + VPN Bypass)
+# AI_Tools/build.py — V5.2.1 (Fix Windows Encoding Error)
 # ═══════════════════════════════════════════════════════════════
-# ساخت لایه شبکه: Rate Limiter + Nobitex API Base
-# هدف: اتصال به نوبیتکس حتی وقتی VPN روشن است (Split Logic)
+# اصلاحیه: رفع مشکل ذخیره فایل تست در ویندوز + لایه شبکه
 # ═══════════════════════════════════════════════════════════════
 
 import os
@@ -35,6 +34,7 @@ def log_error(step, error):
 
 def write_file(path, content):
     try:
+        # Force UTF-8 to handle any special chars
         with open(path, 'w', encoding='utf-8') as f:
             f.write(content.strip())
         print(f"      ✅ Wrote: {os.path.basename(path)}")
@@ -248,7 +248,7 @@ def step8_git():
     print("\n[8/9] 🐙 Git Sync...")
     try:
         setup_git.setup()
-        setup_git.sync(f"Build V5.2: Network Layer & VPN Bypass Logic")
+        setup_git.sync(f"Build V5.2.1: Fix Windows Encoding")
         print("      ✅ Git synced")
     except Exception as e:
         log_error("Step8", e)
@@ -258,6 +258,7 @@ def step9_launch():
     print("      ℹ️ Testing Network Layer (Nobitex Connection)...")
     
     # Small test script to verify Nobitex connection
+    # REMOVED EMOJIS TO PREVENT WINDOWS ENCODING ERRORS
     test_script = """
 import sys
 import os
@@ -265,7 +266,7 @@ sys.path.append(os.getcwd())
 from modules.network.nobitex_api import NobitexAPI
 
 print("-" * 50)
-print("📡 NETWORK DIAGNOSTIC (NOBITEX)")
+print("NETWORK DIAGNOSTIC (NOBITEX)")
 print("-" * 50)
 
 api = NobitexAPI()
@@ -275,18 +276,20 @@ print("   • Bypass Mode (trust_env=False): ACTIVE")
 success, msg = api.check_connection()
 
 if success:
-    print(f"   ✅ SUCCESS: {msg}")
-    print("   ℹ️  Note: Connection established successfully.")
-    print("   ℹ️  The system bypassed the VPN to reach Nobitex.")
+    print(f"   [OK] SUCCESS: {msg}")
+    print("   Note: Connection established successfully.")
+    print("   The system bypassed the VPN to reach Nobitex.")
 else:
-    print(f"   ❌ FAILED: {msg}")
-    print("   ⚠️  Troubleshooting:")
+    print(f"   [X] FAILED: {msg}")
+    print("   Troubleshooting:")
     print("       1. Ensure VPN is NOT in 'Lockdown' or 'Full Tunnel' mode (like Cisco).")
     print("       2. Use Split Tunneling if available.")
 print("-" * 50)
 """
     test_file = os.path.join(ROOT, "test_network.py")
-    with open(test_file, "w") as f:
+    
+    # FIX: Explicit utf-8 encoding for Windows
+    with open(test_file, "w", encoding="utf-8") as f:
         f.write(test_script)
         
     subprocess.run([VENV_PYTHON, "test_network.py"], cwd=ROOT)
@@ -299,7 +302,7 @@ print("-" * 50)
 def main():
     start_time = datetime.now()
     print("\n" + "═" * 60)
-    print(f"🔧 BUILD V5.2 — Network Layer (VPN Bypass Edition)")
+    print(f"🔧 BUILD V5.2.1 — Network Layer (Fix Encoding)")
     print("═" * 60)
 
     try:
