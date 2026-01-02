@@ -1,13 +1,15 @@
-# AI_Tools/build.py — V5.3.1 (Correct Env Reading)
+# AI_Tools/build.py — V5.4 (Architecture Sync + Network Fix Attempt)
 # ═══════════════════════════════════════════════════════════════
-# اصلاحیه: هماهنگی با نام متغیرهای موجود در .env کاربر
+# Ref: REF-ARCH-V10.8.2-FINAL-LOCK-610
+# Updates:
+# 1. NobitexAPI updated with OHLCV, Orderbook, Wallet (Per Arch Sec 2 & 15)
+# 2. Hardened Network Adapter mounting to bypass Proxy
 # ═══════════════════════════════════════════════════════════════
 
 import os
 import sys
 import subprocess
 import socket
-from datetime import datetime
 import time
 
 import context_gen
@@ -41,16 +43,18 @@ def write_file(path, content):
         log_error("WriteFile", f"Failed to write {path}: {e}")
 
 # ═══════════════════════════════════════════════════════════════
-# CODE TEMPLATES
+# CODE TEMPLATES (UPDATED PER ARCHITECTURE V10.8.2)
 # ═══════════════════════════════════════════════════════════════
 
-# Updated to read NOBITEX_API_KEY (matching your .env)
+# Updated NobitexAPI with methods required for Strategy (OHLCV, Wallets)
 NOBITEX_API_CODE = """
 import requests
 import json
 import logging
 import time
 import os
+from requests.adapters import HTTPAdapter
+from urllib3.util.retry import Retry
 from dotenv import load_dotenv
 from modules.network.rate_limiter import RateLimiter
 
@@ -61,15 +65,20 @@ class NobitexAPI:
     BASE_URL = "https://api.nobitex.ir"
 
     def __init__(self, test_mode=False):
-        # Changed to match your .env file variable name
         self.token = os.getenv("NOBITEX_API_KEY") 
         self.test_mode = test_mode
-        self.rate_limiter = RateLimiter(max_calls=25, period=60)
-        self.session = requests.Session()
         
-        # ⚠️ NOBITEX NEEDS DIRECT CONNECTION (Bypass VPN)
-        self.session.trust_env = False 
-        self.session.proxies = {}
+        # Arch 2.5.1: 30 req/min limit (We use 25 for safety)
+        self.rate_limiter = RateLimiter(max_calls=25, period=60)
+        
+        # Network Hardening: Force Direct Connection
+        self.session = requests.Session()
+        self.session.trust_env = False  # Ignore System Proxy
+        self.session.proxies = {"http": None, "https": None} # Explicit No Proxy
+        
+        # Retry Logic for unstable networks
+        retries = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
+        self.session.mount('https://', HTTPAdapter(max_retries=retries))
 
     def _get_headers(self):
         headers = {"content-type": "application/json"}
@@ -88,7 +97,7 @@ class NobitexAPI:
                 headers=self._get_headers(),
                 params=params,
                 data=json.dumps(data) if data else None,
-                timeout=10 
+                timeout=12 # Slight increase for VPN latency
             )
 
             if response.status_code != 200:
@@ -100,31 +109,55 @@ class NobitexAPI:
         except requests.exceptions.ProxyError:
             return {"status": "error", "message": "Proxy/VPN Conflict"}
         except requests.exceptions.ConnectionError:
-            return {"status": "error", "message": "Connection Failed (Check VPN Split Tunneling)"}
+            return {"status": "error", "message": "Connection Failed (VPN Split Tunneling Required)"}
         except Exception as e:
             return {"status": "error", "message": str(e)}
 
+    # ---------------------------------------------------------
+    # PUBLIC ENDPOINTS (For Strategy & Analysis)
+    # ---------------------------------------------------------
+    
     def get_orderbook(self, symbol="BTCUSDT"):
+        # Arch 2.2: Required for OBI Calculation
         return self._send_request("GET", f"/v2/orderbook/{symbol}", public=True)
 
     def get_market_stats(self, src="btc", dst="usdt"):
+        # General health check
         return self._send_request("GET", "/market/stats", params={"src": src, "dst": dst}, public=True)
     
+    def get_ohlcv(self, symbol="BTCUSDT", resolution="15", limit=100):
+        # Arch 2.1: M15 Timeframe required
+        # resolution: 15 (min), 60 (hour), D (day)
+        params = {"symbol": symbol, "resolution": resolution, "limit": limit}
+        return self._send_request("GET", "/market/udf/history", params=params, public=True)
+
+    # ---------------------------------------------------------
+    # PRIVATE ENDPOINTS (For Trading & Wallet)
+    # ---------------------------------------------------------
+
+    def get_wallet(self):
+        # Arch 1.2: Capital Allocation (USDT, BTC, PAXG, etc.)
+        return self._send_request("POST", "/users/wallets/list")
+
     def get_profile(self):
-        \"\"\"Test Private API (Needs Token)\"\"\"
         return self._send_request("GET", "/users/profile")
 
     def check_connection(self):
         try:
-            # 1. Test Public
+            # 1. Test Public (OHLCV is light and good test)
             t0 = time.time()
-            stats = self.get_market_stats()
+            # Request M15 candles for BTC (Standard check)
+            stats = self.get_ohlcv(symbol="BTCUSDT", resolution="15", limit=1)
             ping = (time.time() - t0) * 1000
             
             if not stats or stats.get("status") == "error":
                 return False, f"Public API Failed: {stats.get('message')}"
+            
+            # Check if we actually got candle data (s = status: ok)
+            if stats.get('s') != 'ok':
+                 return False, f"Data Error: {stats}"
 
-            # 2. Test Private (if token exists)
+            # 2. Test Private
             auth_msg = "Skipped (No Token)"
             if self.token:
                 profile = self.get_profile()
@@ -138,6 +171,7 @@ class NobitexAPI:
             return False, str(e)
 """
 
+# Telegram Bot (Untouched - it works)
 TELEGRAM_BOT_CODE = """
 import requests
 import logging
@@ -230,14 +264,9 @@ def step2_venv():
 
 def step3_deps():
     print("\n[3/9] 📦 Dependencies...")
-    try:
-        subprocess.run(
-            [VENV_PYTHON, "-m", "pip", "install", "python-dotenv", "requests", "-q"],
-            check=True
-        )
-        print("      ✅ Dependencies verified")
-    except Exception as e:
-        log_error("Step3", e)
+    # Ensuring requests is installed
+    subprocess.run([VENV_PYTHON, "-m", "pip", "install", "requests", "python-dotenv", "-q"], check=True)
+    print("      ✅ Verified")
 
 def step4_folders():
     print("\n[4/9] 📁 Folders...")
@@ -247,25 +276,15 @@ def step4_folders():
     print("      ✅ modules/network/ exists")
 
 def step5_files():
-    print("\n[5/9] 📝 Updating Files...")
+    print("\n[5/9] 📝 Updating Files (Sync with V10.8.2)...")
     
-    # 1. Nobitex API (Updated for NOBITEX_API_KEY)
+    # 1. Nobitex API (New Version with OHLCV/Wallet)
     write_file(os.path.join(ROOT, "modules", "network", "nobitex_api.py"), NOBITEX_API_CODE)
     
-    # 2. Rate Limiter (Ensure exists)
+    # 2. Others (Ensure consistency)
     write_file(os.path.join(ROOT, "modules", "network", "rate_limiter.py"), RATE_LIMITER_CODE)
-
-    # 3. Telegram Bot
     write_file(os.path.join(ROOT, "modules", "network", "telegram_bot.py"), TELEGRAM_BOT_CODE)
-
-    # 4. Init
     write_file(os.path.join(ROOT, "modules", "network", "__init__.py"), INIT_NETWORK_CODE)
-
-    # 5. Check .env (Read Only)
-    if os.path.exists(ENV_FILE):
-        print("      ✅ .env file detected (Using existing credentials)")
-    else:
-        log_error("Step5", ".env file is MISSING! Please create it.")
 
 def step6_modify():
     print("\n[6/9] ✏️ Modify...")
@@ -283,17 +302,18 @@ def step8_git():
     print("\n[8/9] 🐙 Git Sync...")
     try:
         setup_git.setup()
-        setup_git.sync(f"Build V5.3.1: Configured with existing .env")
+        setup_git.sync(f"Build V5.4: Network Logic Update (Arch V10.8.2 Sync)")
         print("      ✅ Git synced")
     except Exception as e:
         log_error("Step8", e)
 
 def step9_launch():
-    print("\n[9/9] 🚀 Network Diagnostic (Reading .env)...")
+    print("\n[9/9] 🚀 Network Diagnostic V5.4...")
     
     test_script = """
 import sys
 import os
+import time
 from dotenv import load_dotenv
 
 sys.path.append(os.getcwd())
@@ -303,44 +323,59 @@ from modules.network.nobitex_api import NobitexAPI
 from modules.network.telegram_bot import TelegramBot
 
 print("-" * 60)
-print("NETWORK DIAGNOSTIC V5.3.1")
-print("-" * 60)
-
-# Check Env vars loaded
-print(f"ENV CHECK: Nobitex Key Loaded? {'YES' if os.getenv('NOBITEX_API_KEY') else 'NO'}")
-print(f"ENV CHECK: Telegram Token Loaded? {'YES' if os.getenv('TELEGRAM_BOT_TOKEN') else 'NO'}")
+print("NETWORK DIAGNOSTIC V5.4 (Arch V10.8.2)")
 print("-" * 60)
 
 # 1. Test Telegram
-print("\\n[1] Testing Telegram (Needs VPN)...")
+print("\\n[1] Testing Telegram (VPN Required)...")
 tg = TelegramBot()
 if tg.enabled:
-    if tg.send_message("🌊 Ocean Hunter: Network Connectivity Test"):
+    msg = f"🌊 Ocean Hunter V10.8.2: Network Test V5.4\\n🕒 Time: {time.strftime('%H:%M:%S')}"
+    if tg.send_message(msg):
         print("    ✅ Telegram Message Sent Successfully!")
     else:
-        print("    ❌ Telegram Send Failed (Check VPN or Token)")
+        print("    ❌ Telegram Send Failed")
 else:
-    print("    ⚠️ Telegram Disabled (Keys missing in .env)")
+    print("    ⚠️ Telegram Disabled (.env missing)")
 
 # 2. Test Nobitex
-print("\\n[2] Testing Nobitex (Needs Direct Connection)...")
+print("\\n[2] Testing Nobitex (Direct Connection)...")
 api = NobitexAPI()
 success, msg = api.check_connection()
 
 if success:
     print(f"    ✅ Nobitex Connected! Status: {msg}")
+    print("    ℹ️  Testing Data Fetch (Architecture Check):")
+    
+    # Test OHLCV (Needed for Strategy)
+    ohlcv = api.get_ohlcv("BTCUSDT", "15", 1)
+    if ohlcv and ohlcv.get('s') == 'ok':
+        print(f"       ✅ OHLCV (M15) Fetched: {ohlcv['t'][0]} -> {ohlcv['c'][0]}")
+    else:
+        print(f"       ❌ OHLCV Failed: {ohlcv}")
+
+    # Test Wallet (Needed for Capital)
+    if api.token:
+        wallet = api.get_wallet()
+        if wallet and wallet.get('status') == 'ok':
+             print("       ✅ Wallet Data Accessible")
+        else:
+             print("       ❌ Wallet Data Inaccessible (Check Permissions)")
+
 else:
     print(f"    ❌ Nobitex Failed: {msg}")
-    print("\\n    🔴 TROUBLESHOOTING:")
-    print("       If VPN is ON, you MUST exclude python.exe via Split Tunneling.")
+    print("\\n    🔴 CRITICAL ACTION REQUIRED:")
+    print("       The VPN is still blocking direct connection to Iran.")
+    print("       Since code-based bypass failed, you MUST enable 'Split Tunneling'")
+    print("       in Turbo VPN and exclude 'python.exe'.")
 
 print("-" * 60)
 """
-    test_file = os.path.join(ROOT, "test_network_v3.py")
+    test_file = os.path.join(ROOT, "test_network_v4.py")
     with open(test_file, "w", encoding="utf-8") as f:
         f.write(test_script)
         
-    subprocess.run([VENV_PYTHON, "test_network_v3.py"], cwd=ROOT)
+    subprocess.run([VENV_PYTHON, "test_network_v4.py"], cwd=ROOT)
     os.remove(test_file)
 
 # ═══════════════════════════════════════════════════════════════
@@ -349,7 +384,7 @@ print("-" * 60)
 
 def main():
     print("\n" + "═" * 60)
-    print(f"🔧 BUILD V5.3.1 — Network Layer + Existing Env")
+    print(f"🔧 BUILD V5.4 — Architecture Sync + Network Hardening")
     print("═" * 60)
 
     try:
