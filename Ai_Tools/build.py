@@ -1,4 +1,4 @@
-# AI_Tools/build.py — Build V5.7.7 (Direct IP Connection)
+# AI_Tools/build.py — Build V5.7.8 (Forced DNS Adapter)
 # ═══════════════════════════════════════════════════════════════
 
 import os
@@ -19,28 +19,41 @@ else:
     VENV_PYTHON = os.path.join(VENV_PATH, "bin", "python")
 
 # ═══════════════════════════════════════════════════════════════
-# 1. NETWORK FIX (Hardcoded IP)
+# 1. NETWORK FIX (Host Header + Forced DNS)
 # ═══════════════════════════════════════════════════════════════
 NOBITEX_API_PY = '''# modules/network/nobitex_api.py
 import requests
 import urllib3
+from requests.adapters import HTTPAdapter
+from urllib3.util import connection
 
-# Suppress SSL warnings (since we access via IP, SSL will complain)
+# Suppress SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# --- MAGIC TRICK: FORCE DNS RESOLUTION ---
+# This overrides the system DNS and forces Python to connect 
+# to the specific working IP for api.nobitex.ir
+
+ORIGIN_CONNECT = connection.create_connection
+
+def patched_create_connection(address, *args, **kwargs):
+    host, port = address
+    if host == "api.nobitex.ir":
+        # We force the IP we found earlier
+        return ORIGIN_CONNECT(("178.22.122.100", port), *args, **kwargs)
+    return ORIGIN_CONNECT(address, *args, **kwargs)
+
+connection.create_connection = patched_create_connection
+# ------------------------------------------
+
 class NobitexAPI:
-    # WE USE THE IP FOUND BY YOUR NSLOOKUP
-    DIRECT_IP = "178.22.122.100" 
-    BASE_URL = f"https://{DIRECT_IP}"
+    BASE_URL = "https://api.nobitex.ir"
 
     def __init__(self):
         self.session = requests.Session()
-        self.session.trust_env = False
+        self.session.trust_env = False  # Ignore system proxies
         
         self.session.headers.update({
-            # We must tell the server which domain we want, 
-            # even though we connect to the IP directly.
-            "Host": "api.nobitex.ir",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "application/json"
         })
@@ -56,12 +69,11 @@ class NobitexAPI:
         }
         
         try:
-            # verify=False is MANDATORY when using direct IP
+            # We use the domain name, but the patch above forces it to the IP
             response = self.session.get(url, params=params, timeout=15, verify=False)
             
             if response.status_code == 200:
                 data = response.json()
-                # Check if API returned success status
                 if data.get("s") == "ok":
                     return data
                 else:
@@ -77,17 +89,17 @@ class NobitexAPI:
 # 2. MAIN (Final Verification)
 # ═══════════════════════════════════════════════════════════════
 MAIN_PY = '''#!/usr/bin/env python3
-"""OCEAN HUNTER V5.7.7 — IP Bypass Mode"""
+"""OCEAN HUNTER V5.7.8 — DNS MONKEY PATCH"""
 import os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from modules.network.nobitex_api import NobitexAPI
 
 def main():
     print("\\n" + "=" * 60)
-    print("🚀 OCEAN HUNTER V5.7.7 — DIRECT IP BYPASS")
+    print("🚀 OCEAN HUNTER V5.7.8 — DNS MONKEY PATCH")
     print("=" * 60)
 
-    print("\\n[TEST] Connecting to Nobitex via 178.22.122.100...")
+    print("\\n[TEST] Connecting to api.nobitex.ir (Forced IP: 178.22.122.100)...")
     
     api = NobitexAPI()
     now = int(time.time())
@@ -99,10 +111,9 @@ def main():
         price = data['c'][-1]
         print(f"      ✅ SUCCESS! Connection Established!")
         print(f"      💰 Current BTC Price: {price:,.0f} IRT")
-        print("      (We successfully bypassed the DNS blockage)")
+        print("      (DNS Patch worked successfully)")
     else:
         print(f"      ❌ FAILED: {data.get('msg')}")
-        print("      If this fails, the Firewall is blocking the IP itself.")
         
     print("\\n" + "=" * 60)
 
@@ -119,7 +130,7 @@ FILES_TO_CREATE = {
 # BUILD STEPS
 # ═══════════════════════════════════════════════════════════════
 def step1_create_files():
-    print("\n[1/4] 📝 Configuring IP Bypass...")
+    print("\n[1/4] 📝 Configuring DNS Patch...")
     for path, content in FILES_TO_CREATE.items():
         full_path = os.path.join(ROOT, path)
         with open(full_path, "w", encoding="utf-8") as f:
@@ -130,7 +141,7 @@ def step2_git():
     print("\n[2/4] 🐙 Git Sync...")
     try:
         setup_git.setup()
-        setup_git.sync("Build V5.7.7: Direct IP Connection")
+        setup_git.sync("Build V5.7.8: DNS Monkey Patch")
         print("      ✅ Saved to History")
     except:
         pass
@@ -146,7 +157,7 @@ def step4_launch():
     subprocess.run([VENV_PYTHON, "main.py"], cwd=ROOT)
 
 def main():
-    print("\n🚀 STARTING BUILD V5.7.7...")
+    print("\n🚀 STARTING BUILD V5.7.8...")
     step1_create_files()
     step2_git()
     step3_context()

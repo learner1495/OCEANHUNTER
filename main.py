@@ -1,15 +1,15 @@
 #!/usr/bin/env python3
-"""OCEAN HUNTER V5.7.7 — IP Bypass Mode"""
+"""OCEAN HUNTER V5.7.8 — DNS MONKEY PATCH"""
 import os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from modules.network.nobitex_api import NobitexAPI
 
 def main():
     print("\n" + "=" * 60)
-    print("🚀 OCEAN HUNTER V5.7.7 — DIRECT IP BYPASS")
+    print("🚀 OCEAN HUNTER V5.7.8 — DNS MONKEY PATCH")
     print("=" * 60)
 
-    print("\n[TEST] Connecting to Nobitex via 178.22.122.100...")
+    print("\n[TEST] Connecting to api.nobitex.ir (Forced IP: 178.22.122.100)...")
     
     api = NobitexAPI()
     now = int(time.time())
@@ -21,10 +21,9 @@ def main():
         price = data['c'][-1]
         print(f"      ✅ SUCCESS! Connection Established!")
         print(f"      💰 Current BTC Price: {price:,.0f} IRT")
-        print("      (We successfully bypassed the DNS blockage)")
+        print("      (DNS Patch worked successfully)")
     else:
         print(f"      ❌ FAILED: {data.get('msg')}")
-        print("      If this fails, the Firewall is blocking the IP itself.")
         
     print("\n" + "=" * 60)
 

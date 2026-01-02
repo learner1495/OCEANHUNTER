@@ -1,23 +1,36 @@
 # modules/network/nobitex_api.py
 import requests
 import urllib3
+from requests.adapters import HTTPAdapter
+from urllib3.util import connection
 
-# Suppress SSL warnings (since we access via IP, SSL will complain)
+# Suppress SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
+# --- MAGIC TRICK: FORCE DNS RESOLUTION ---
+# This overrides the system DNS and forces Python to connect 
+# to the specific working IP for api.nobitex.ir
+
+ORIGIN_CONNECT = connection.create_connection
+
+def patched_create_connection(address, *args, **kwargs):
+    host, port = address
+    if host == "api.nobitex.ir":
+        # We force the IP we found earlier
+        return ORIGIN_CONNECT(("178.22.122.100", port), *args, **kwargs)
+    return ORIGIN_CONNECT(address, *args, **kwargs)
+
+connection.create_connection = patched_create_connection
+# ------------------------------------------
+
 class NobitexAPI:
-    # WE USE THE IP FOUND BY YOUR NSLOOKUP
-    DIRECT_IP = "178.22.122.100" 
-    BASE_URL = f"https://{DIRECT_IP}"
+    BASE_URL = "https://api.nobitex.ir"
 
     def __init__(self):
         self.session = requests.Session()
-        self.session.trust_env = False
+        self.session.trust_env = False  # Ignore system proxies
         
         self.session.headers.update({
-            # We must tell the server which domain we want, 
-            # even though we connect to the IP directly.
-            "Host": "api.nobitex.ir",
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "application/json"
         })
@@ -33,12 +46,11 @@ class NobitexAPI:
         }
         
         try:
-            # verify=False is MANDATORY when using direct IP
+            # We use the domain name, but the patch above forces it to the IP
             response = self.session.get(url, params=params, timeout=15, verify=False)
             
             if response.status_code == 200:
                 data = response.json()
-                # Check if API returned success status
                 if data.get("s") == "ok":
                     return data
                 else:
