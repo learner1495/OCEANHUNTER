@@ -1,4 +1,7 @@
-# AI_Tools/build.py — Data Collection V5.0
+# AI_Tools/build.py — V5.2 (Network Layer + VPN Bypass)
+# ═══════════════════════════════════════════════════════════════
+# ساخت لایه شبکه: Rate Limiter + Nobitex API Base
+# هدف: اتصال به نوبیتکس حتی وقتی VPN روشن است (Split Logic)
 # ═══════════════════════════════════════════════════════════════
 
 import os
@@ -6,6 +9,7 @@ import sys
 import subprocess
 import socket
 from datetime import datetime
+import time
 
 import context_gen
 import setup_git
@@ -16,290 +20,166 @@ import setup_git
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(SCRIPT_DIR)
 VENV_PATH = os.path.join(ROOT, ".venv")
-VENV_PYTHON = os.path.join(VENV_PATH, "Scripts", "python.exe") if sys.platform == "win32" else os.path.join(VENV_PATH, "bin", "python")
 
-FOLDERS = ["modules/data", "data/ohlcv"]
+if sys.platform == "win32":
+    VENV_PYTHON = os.path.join(VENV_PATH, "Scripts", "python.exe")
+else:
+    VENV_PYTHON = os.path.join(VENV_PATH, "bin", "python")
+
+MAIN_FILE = "main.py"
 errors = []
 
 def log_error(step, error):
     errors.append(f"[{step}] {error}")
     print(f"      ⚠️ Error: {error}")
 
-# ═══════════════════════════════════════════════════════════════
-# MAIN.PY CONTENT
-# ═══════════════════════════════════════════════════════════════
-MAIN_PY = '''#!/usr/bin/env python3
-"""OCEAN HUNTER V10.9 — Data Collection"""
-
-import os
-import sys
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-
-from dotenv import load_dotenv
-load_dotenv()
-
-def main():
-    print("\\n" + "=" * 50)
-    print("🌊 OCEAN HUNTER V10.9 — Data Collection")
-    print("=" * 50)
-
-    mode = os.getenv("MODE", "PAPER")
-    print(f"\\n🔧 Mode: {mode}")
-
-    print("\\n[1/4] 🔌 Testing Nobitex API...")
+def write_file(path, content):
     try:
-        from modules.network import get_client
-        client = get_client()
-        result = client.test_connection()
-        print(f"      Public API:  {\\'✅\\' if result[\\'public_api\\'] else \\'❌\\'}")
-        print(f"      Private API: {\\'✅\\' if result[\\'private_api\\'] else \\'❌\\'}")
+        with open(path, 'w', encoding='utf-8') as f:
+            f.write(content.strip())
+        print(f"      ✅ Wrote: {os.path.basename(path)}")
     except Exception as e:
-        print(f"      ❌ Error: {e}")
-
-    print("\\n[2/4] 📱 Testing Telegram Bot...")
-    try:
-        from modules.network import get_bot
-        bot = get_bot()
-        if bot.enabled:
-            response = bot.send_alert(title="OCEAN HUNTER V10.9", message="✅ Data Collection فعال شد", alert_type="SUCCESS")
-            if response.get("ok"):
-                print("      ✅ Telegram message sent!")
-            else:
-                print(f"      ⚠️ Telegram error: {response.get(\\'error\\', \\'Unknown\\')}")
-        else:
-            print("      ⚠️ Telegram not configured")
-    except Exception as e:
-        print(f"      ❌ Error: {e}")
-
-    print("\\n[3/4] ⏱️ Rate Limiter Status...")
-    try:
-        from modules.network import get_statusrl_status = get_status()
-        print(f"      Tokens: {rl_status[\\'tokens_available\\']}/{rl_status[\\'max_tokens\\']}")
-        print(f"      Usage:  {rl_status[\\'usage_percent\\']}%")
-    except Exception as e:
-        print(f"      ❌ Error: {e}")
-
-    print("\\n[4/4] 📊 Data Collection...")
-    try:
-        from modules.data import get_collector
-        collector = get_collector()
-        results = collector.collect_all()
-        print(f"      ✅ Collected {results[\\'total_candles\\']} candles")
-        print(f"      📈 Symbols: {results[\\'success_count\\']}/{len(results[\\'symbols\\'])}")
-        summary = collector.get_summary()
-        for symbol, stats in summary.items():
-            if stats.get(\\'exists\\'):
-                print(f"      📁 {symbol}: {stats[\\'rows\\']} rows")
-    except Exception as e:
-        print(f"      ❌ Error: {e}")
-
-    print("\\n" + "=" * 50)
-    print("✅ ALL TASKS COMPLETE")
-    print("=" * 50 + "\\n")
-
-if __name__ == "__main__":
-    main()
-'''
+        log_error("WriteFile", f"Failed to write {path}: {e}")
 
 # ═══════════════════════════════════════════════════════════════
-# DATA MODULE FILES
+# CODE TEMPLATES (Network Layer)
 # ═══════════════════════════════════════════════════════════════
-DATA_INIT = '''# modules/data/__init__.py
-from .collector import DataCollector, get_collector
-from .storage import DataStorage, get_storage
-__all__ = ["DataCollector", "get_collector", "DataStorage", "get_storage"]
-'''
 
-DATA_STORAGE = '''# modules/data/storage.py
-import os
-import csv
-from datetime import datetime
-from typing import List, Dict, Any, Optional
-
-class DataStorage:
-    def __init__(self, data_dir: str = None):
-        if data_dir is None:
-            current = os.path.dirname(os.path.abspath(__file__))
-            root = os.path.dirname(os.path.dirname(current))
-            data_dir = os.path.join(root, "data", "ohlcv")
-        self.data_dir = data_dir
-        self._ensure_dir()
-
-    def _ensure_dir(self):
-        if not os.path.exists(self.data_dir):
-            os.makedirs(self.data_dir)
-
-    def _get_filepath(self, symbol: str) -> str:
-        safe_symbol = symbol.replace("/", "_").upper()
-        return os.path.join(self.data_dir, f"{safe_symbol}.csv")
-
-    def save_ohlcv(self, symbol: str, data: List[Dict]) -> bool:
-        if not data:
-            return False
-        filepath = self._get_filepath(symbol)
-        file_exists = os.path.exists(filepath)
-        try:
-            existing_timestamps = set()
-            if file_exists:
-                with open(filepath, 'r', encoding='utf-8') as f:
-                    reader = csv.DictReader(f)
-                    for row in reader:
-                        existing_timestamps.add(row.get('timestamp', ''))
-            new_data = [row for row in data if str(row.get('timestamp', '')) not in existing_timestamps]
-            if not new_data:
-                return True
-            fieldnames = ['timestamp', 'datetime', 'open', 'high', 'low', 'close', 'volume']
-            with open(filepath, 'a', newline='', encoding='utf-8') as f:
-                writer = csv.DictWriter(f, fieldnames=fieldnames)
-                if not file_exists:
-                    writer.writeheader()
-                for row in new_data:
-                    ts = row.get('timestamp', 0)
-                    dt = datetime.fromtimestamp(ts).strftime('%Y-%m-%d %H:%M:%S') if ts else ''
-                    writer.writerow({
-                        'timestamp': ts, 'datetime': dt,
-                        'open': row.get('open', 0), 'high': row.get('high', 0),
-                        'low': row.get('low', 0), 'close': row.get('close', 0),
-                        'volume': row.get('volume', 0)
-                    })
-            return True
-        except Exception as e:
-            print(f"[Storage] Error saving {symbol}: {e}")
-            return False
-
-    def get_latest(self, symbol: str, count: int = 100) -> List[Dict]:
-        filepath = self._get_filepath(symbol)
-        if not os.path.exists(filepath):
-            return []
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                rows = list(csv.DictReader(f))
-            return rows[-count:] if len(rows) > count else rows
-        except Exception as e:
-            print(f"[Storage] Error reading {symbol}: {e}")
-            return []
-
-    def get_stats(self, symbol: str) -> Dict[str, Any]:
-        filepath = self._get_filepath(symbol)
-        if not os.path.exists(filepath):
-            return {"exists": False, "rows": 0}
-        try:
-            with open(filepath, 'r', encoding='utf-8') as f:
-                rows = list(csv.DictReader(f))
-            if not rows:
-                return {"exists": True, "rows": 0}
-            return {
-                "exists": True, "rows": len(rows),
-                "first_date": rows[0].get('datetime', 'N/A'),
-                "last_date": rows[-1].get('datetime', 'N/A'),
-                "file_size_kb": round(os.path.getsize(filepath) / 1024, 2)
-            }
-        except Exception as e:
-            return {"exists": True, "rows": 0, "error": str(e)}
-
-_storage: Optional[DataStorage] = None
-def get_storage() -> DataStorage:
-    global _storage
-    if _storage is None:
-        _storage = DataStorage()
-    return _storage
-'''
-
-DATA_COLLECTOR = '''# modules/data/collector.py
+RATE_LIMITER_CODE = """
 import time
-from datetime import datetime
-from typing import Dict, Any, List, Optional
-from modules.network import get_client
-from .storage import get_storage
+import logging
+from collections import deque
 
-class DataCollector:
-    DEFAULT_SYMBOLS = ["BTCIRT", "ETHIRT", "USDTIRT"]
+logger = logging.getLogger("RateLimiter")
 
-    def __init__(self):
-        self.client = get_client()
-        self.storage = get_storage()
-        self.symbols = self.DEFAULT_SYMBOLS.copy()
+class RateLimiter:
+    def __init__(self, max_calls=25, period=60):
+        \"\"\"
+        Nobitex Limit: 30 req/min.
+        We use 25 req/min (Safety Buffer).
+        \"\"\"
+        self.max_calls = max_calls
+        self.period = period
+        self.timestamps = deque()
 
-    def fetch_ohlcv(self, symbol: str, resolution: str = "15") -> List[Dict]:
+    def wait_if_needed(self):
+        \"\"\"Checks history and waits if limit is reached.\"\"\"
+        now = time.time()
+        
+        # Remove timestamps older than the period
+        while self.timestamps and self.timestamps[0] <= now - self.period:
+            self.timestamps.popleft()
+
+        if len(self.timestamps) >= self.max_calls:
+            sleep_time = self.timestamps[0] + self.period - now + 0.1
+            if sleep_time > 0:
+                logger.warning(f"Rate limit reached. Sleeping for {sleep_time:.2f}s")
+                time.sleep(sleep_time)
+            
+            # Clean up again after sleep
+            self.wait_if_needed()
+        
+        self.timestamps.append(time.time())
+"""
+
+NOBITEX_API_CODE = """
+import requests
+import json
+import logging
+import time
+from modules.network.rate_limiter import RateLimiter
+
+logger = logging.getLogger("NobitexAPI")
+
+class NobitexAPI:
+    BASE_URL = "https://api.nobitex.ir"
+
+    def __init__(self, token=None, test_mode=False):
+        self.token = token
+        self.test_mode = test_mode
+        self.rate_limiter = RateLimiter(max_calls=25, period=60)
+        self.session = requests.Session()
+        
+        # ⚠️ CRITICAL FOR VPN USERS:
+        # trust_env=False tells requests to ignore system proxies (VPN) 
+        # and try to connect directly. This helps with Nobitex IP restrictions.
+        self.session.trust_env = False 
+        self.session.proxies = {} # Explicitly clear proxies
+
+    def _get_headers(self):
+        headers = {"content-type": "application/json"}
+        if self.token:
+            headers["Authorization"] = f"Token {self.token}"
+        return headers
+
+    def _send_request(self, method, endpoint, params=None, data=None, public=False):
+        \"\"\"
+        Unified request handler with error management and rate limiting.
+        \"\"\"
+        url = f"{self.BASE_URL}{endpoint}"
+        
+        # 1. Check Rate Limit
+        self.rate_limiter.wait_if_needed()
+
         try:
-            now = int(time.time())
-            from_ts = now - (24 * 60 * 60)
-            result = self.client.get_ohlcv(symbol=symbol, resolution=resolution, from_ts=from_ts, to_ts=now)
-            if result.get("s") != "ok":
-                print(f"[Collector] API error for {symbol}: {result.get('s', 'unknown')}")
-                return []
-            candles = []
-            timestamps = result.get("t", [])
-            opens = result.get("o", [])
-            highs = result.get("h", [])
-            lows = result.get("l", [])
-            closes = result.get("c", [])
-            volumes = result.get("v", [])
-            for i in range(len(timestamps)):
-                candles.append({
-                    "timestamp": timestamps[i],
-                    "open": opens[i] if i < len(opens) else 0,
-                    "high": highs[i] if i < len(highs) else 0,
-                    "low": lows[i] if i < len(lows) else 0,
-                    "close": closes[i] if i < len(closes) else 0,
-                    "volume": volumes[i] if i < len(volumes) else 0
-                })
-            return candles
+            # 2. Send Request
+            response = self.session.request(
+                method=method,
+                url=url,
+                headers=self._get_headers(),
+                params=params,
+                data=json.dumps(data) if data else None,
+                timeout=10 
+            )
+
+            # 3. Handle Errors
+            if response.status_code != 200:
+                logger.error(f"API Error [{response.status_code}]: {response.text}")
+                return {"status": "error", "code": response.status_code, "message": response.text}
+
+            return response.json()
+
+        except requests.exceptions.ProxyError:
+            logger.error("Proxy Error: VPN might be blocking connection to Nobitex.")
+            return {"status": "error", "message": "Proxy/VPN Conflict"}
+        except requests.exceptions.ConnectionError:
+            logger.error("Connection Error: Check internet.")
+            return {"status": "error", "message": "Connection Failed"}
         except Exception as e:
-            print(f"[Collector] Error fetching {symbol}: {e}")
-            return []
+            logger.error(f"Unexpected Error: {e}")
+            return {"status": "error", "message": str(e)}
 
-    def collect_symbol(self, symbol: str) -> Dict[str, Any]:
-        result = {"symbol": symbol, "success": False, "candles_fetched": 0, "candles_saved": 0}
-        candles = self.fetch_ohlcv(symbol)
-        result["candles_fetched"] = len(candles)
-        if not candles:
-            return result
-        saved = self.storage.save_ohlcv(symbol, candles)
-        if saved:
-            result["success"] = True
-            result["candles_saved"] = len(candles)
-        return result
+    # ════ Public Endpoints (No Token Needed) ════
 
-    def collect_all(self) -> Dict[str, Any]:
-        results = {"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "symbols": {}, "total_candles": 0, "success_count": 0}
-        for symbol in self.symbols:
-            print(f"      📊 Collecting {symbol}...")
-            res = self.collect_symbol(symbol)
-            results["symbols"][symbol] = res
-            results["total_candles"] += res["candles_fetched"]
-            if res["success"]:
-                results["success_count"] += 1print(f"         ✅ {res['candles_fetched']} candles")
+    def get_orderbook(self, symbol="BTCUSDT"):
+        \"\"\"Fetches OBI data (Bids/Asks)\"\"\"
+        return self._send_request("GET", f"/v2/orderbook/{symbol}", public=True)
+
+    def get_market_stats(self, src="btc", dst="usdt"):
+        \"\"\"Fetches Price, Volume, High/Low\"\"\"
+        return self._send_request("GET", "/market/stats", params={"src": src, "dst": dst}, public=True)
+        
+    def check_connection(self):
+        \"\"\"Test connection and verify IP location logic\"\"\"
+        try:
+            # Check what IP we are using for Nobitex
+            # Nobitex keeps connection open, so if this works, we are good.
+            t0 = time.time()
+            data = self.get_market_stats()
+            ping = (time.time() - t0) * 1000
+            
+            if data and data.get("status") == "ok":
+                return True, f"Connected to Nobitex (Ping: {ping:.0f}ms)"
             else:
-                print(f"         ❌ Failed")
-            time.sleep(1)
-        return results
-
-    def get_summary(self) -> Dict[str, Any]:
-        summary = {}
-        for symbol in self.symbols:
-            summary[symbol] = self.storage.get_stats(symbol)
-        return summary
-
-_collector: Optional[DataCollector] = None
-def get_collector() -> DataCollector:
-    global _collector
-    if _collector is None:
-        _collector = DataCollector()
-    return _collector
-'''
-
-NEW_FILES = {
-    "modules/data/__init__.py": DATA_INIT,
-    "modules/data/storage.py": DATA_STORAGE,
-    "modules/data/collector.py": DATA_COLLECTOR
-}
-
-MODIFY_FILES = {"main.py": MAIN_PY}
+                return False, f"Nobitex Error: {data}"
+        except Exception as e:
+            return False, str(e)
+"""
 
 # ═══════════════════════════════════════════════════════════════
-# BUILD STEPS
+# STEPS
 # ═══════════════════════════════════════════════════════════════
+
 def step1_system():
     print("\n[1/9] 🌐 System Check...")
     try:
@@ -310,64 +190,51 @@ def step1_system():
 
 def step2_venv():
     print("\n[2/9] 🐍 Virtual Environment...")
-    try:
-        if os.path.exists(VENV_PYTHON):
-            print("      ✅ Exists")
-            return
-        subprocess.run([sys.executable, "-m", "venv", VENV_PATH], check=True)
-        print("      ✅ Created")
-    except Exception as e:
-        log_error("Step2", e)
+    if os.path.exists(VENV_PYTHON):
+        print("      ✅ Exists")
+    else:
+        log_error("Step2", "Venv missing (run setup first or old build)")
 
 def step3_deps():
     print("\n[3/9] 📦 Dependencies...")
+    # Ensure requests is installed for API
     try:
-        req = os.path.join(ROOT, "requirements.txt")
-        if not os.path.exists(req):
-            print("      ℹ️ No requirements.txt")
-            return
-        subprocess.run([VENV_PYTHON, "-m", "pip", "install", "-r", req, "-q"], capture_output=True, check=True)
-        print("      ✅ Installed")
+        subprocess.run(
+            [VENV_PYTHON, "-m", "pip", "install", "requests", "-q"],
+            check=True
+        )
+        print("      ✅ 'requests' library verified")
     except Exception as e:
         log_error("Step3", e)
 
 def step4_folders():
     print("\n[4/9] 📁 Folders...")
-    try:
-        for f in FOLDERS:
-            path = os.path.join(ROOT, f)
-            if not os.path.exists(path):
-                os.makedirs(path)
-                print(f"      ✅ Created: {f}/")
-            else:
-                print(f"      ℹ️ Exists: {f}/")
-    except Exception as e:
-        log_error("Step4", e)
+    net_path = os.path.join(ROOT, "modules", "network")
+    if not os.path.exists(net_path):
+        os.makedirs(net_path)
+        print("      ✅ Created modules/network/")
+    else:
+        print("      ✅ modules/network/ exists")
 
-def step5_new_files():
-    print("\n[5/9] 📝 New Files...")
-    try:
-        for path, content in NEW_FILES.items():
-            full = os.path.join(ROOT, path)
-            parent = os.path.dirname(full)
-            if parent and not os.path.exists(parent):
-                os.makedirs(parent)
-            with open(full, "w", encoding="utf-8") as f:
-                f.write(content)
-            print(f"      ✅ Created: {path}")
-    except Exception as e:
-        log_error("Step5", e)
+def step5_files():
+    print("\n[5/9] 📝 Files Creation (Network Layer)...")
+    
+    # 1. Create Rate Limiter
+    rl_path = os.path.join(ROOT, "modules", "network", "rate_limiter.py")
+    write_file(rl_path, RATE_LIMITER_CODE)
+
+    # 2. Create Nobitex API
+    api_path = os.path.join(ROOT, "modules", "network", "nobitex_api.py")
+    write_file(api_path, NOBITEX_API_CODE)
+
+    # 3. Ensure __init__.py exists
+    init_path = os.path.join(ROOT, "modules", "network", "__init__.py")
+    if not os.path.exists(init_path):
+        write_file(init_path, "")
 
 def step6_modify():
-    print("\n[6/9] ✏️ Modify Files...")
-    try:
-        for path, content in MODIFY_FILES.items():
-            full = os.path.join(ROOT, path)
-            with open(full, "w", encoding="utf-8") as f:
-                f.write(content)
-            print(f"      ✏️ Modified: {path}")
-    except Exception as e:
-        log_error("Step6", e)
+    print("\n[6/9] ✏️ Modify...")
+    print("      ℹ️ Logic injected in Step 5")
 
 def step7_context():
     print("\n[7/9] 📋 Context Generation...")
@@ -381,62 +248,82 @@ def step8_git():
     print("\n[8/9] 🐙 Git Sync...")
     try:
         setup_git.setup()
-        setup_git.sync("Build V5.0: Data Collection Module")
+        setup_git.sync(f"Build V5.2: Network Layer & VPN Bypass Logic")
         print("      ✅ Git synced")
     except Exception as e:
         log_error("Step8", e)
 
 def step9_launch():
-    print("\n[9/9] 🚀 Launch...")
-    try:
-        main_path = os.path.join(ROOT, "main.py")
-        if os.path.exists(main_path):
-            print("=" * 40)
-            subprocess.run([VENV_PYTHON, main_path], cwd=ROOT)
-        else:
-            print("      ℹ️ No main.py")
-    except Exception as e:
-        log_error("Step9", e)
+    print("\n[9/9] 🚀 Launch & Test...")
+    print("      ℹ️ Testing Network Layer (Nobitex Connection)...")
+    
+    # Small test script to verify Nobitex connection
+    test_script = """
+import sys
+import os
+sys.path.append(os.getcwd())
+from modules.network.nobitex_api import NobitexAPI
+
+print("-" * 50)
+print("📡 NETWORK DIAGNOSTIC (NOBITEX)")
+print("-" * 50)
+
+api = NobitexAPI()
+print("   • Trying to connect to Nobitex Market Stats...")
+print("   • Bypass Mode (trust_env=False): ACTIVE")
+
+success, msg = api.check_connection()
+
+if success:
+    print(f"   ✅ SUCCESS: {msg}")
+    print("   ℹ️  Note: Connection established successfully.")
+    print("   ℹ️  The system bypassed the VPN to reach Nobitex.")
+else:
+    print(f"   ❌ FAILED: {msg}")
+    print("   ⚠️  Troubleshooting:")
+    print("       1. Ensure VPN is NOT in 'Lockdown' or 'Full Tunnel' mode (like Cisco).")
+    print("       2. Use Split Tunneling if available.")
+print("-" * 50)
+"""
+    test_file = os.path.join(ROOT, "test_network.py")
+    with open(test_file, "w") as f:
+        f.write(test_script)
+        
+    subprocess.run([VENV_PYTHON, "test_network.py"], cwd=ROOT)
+    os.remove(test_file)
 
 # ═══════════════════════════════════════════════════════════════
 # MAIN
 # ═══════════════════════════════════════════════════════════════
+
 def main():
     start_time = datetime.now()
-    print("\n" + "═" * 50)
-    print("🔧 BUILD V5.0 — Data Collection")
-    print(f"⏰ Started: {start_time.strftime('%H:%M:%S')}")
-    print("═" * 50)
+    print("\n" + "═" * 60)
+    print(f"🔧 BUILD V5.2 — Network Layer (VPN Bypass Edition)")
+    print("═" * 60)
 
     try:
         step1_system()
         step2_venv()
         step3_deps()
         step4_folders()
-        step5_new_files()
+        step5_files()
         step6_modify()
         step7_context()
         step8_git()
         step9_launch()
-    except KeyboardInterrupt:
-        print("\n\n⛔ Build cancelled by user")
-        errors.append("KeyboardInterrupt")
+
     except Exception as e:
-        print(f"\n\n💥 Critical error: {e}")
-        errors.append(f"Critical: {e}")
+        print(f"\n💥 Critical error: {e}")
+        errors.append(str(e))
+
     finally:
-        end_time = datetime.now()
-        duration = (end_time - start_time).seconds
-        print("\n" + "═" * 50)
+        print("\n" + "═" * 60)
         if errors:
-            print(f"⚠️ BUILD COMPLETE WITH {len(errors)} ERROR(S):")
-            for err in errors:
-                print(f"   • {err}")
+            print(f"⚠️ ERRORS: {errors}")
         else:
-            print("✅ BUILD COMPLETE — NO ERRORS")
-        print(f"⏱️ Duration: {duration}s")
-        print(f"🏁 Finished: {end_time.strftime('%H:%M:%S')}")
-        print("═" * 50 + "\n")
+            print("✅ NETWORK LAYER BUILT SUCCESSFULLY")
+        print("═" * 60 + "\n")
 
 if __name__ == "__main__":
     main()

@@ -1,42 +1,34 @@
-# modules/network/rate_limiter.py
 import time
-import threading
+import logging
+from collections import deque
+
+logger = logging.getLogger("RateLimiter")
 
 class RateLimiter:
-    def __init__(self, max_tokens: int = 60, refill_seconds: float = 60.0):
-        self.max_tokens = max_tokens
-        self.tokens = max_tokens
-        self.refill_rate = max_tokens / refill_seconds
-        self.last_refill = time.time()
-        self.lock = threading.Lock()
+    def __init__(self, max_calls=25, period=60):
+        """
+        Nobitex Limit: 30 req/min.
+        We use 25 req/min (Safety Buffer).
+        """
+        self.max_calls = max_calls
+        self.period = period
+        self.timestamps = deque()
 
-    def _refill(self):
+    def wait_if_needed(self):
+        """Checks history and waits if limit is reached."""
         now = time.time()
-        elapsed = now - self.last_refill
-        self.tokens = min(self.max_tokens, self.tokens + elapsed * self.refill_rate)
-        self.last_refill = now
+        
+        # Remove timestamps older than the period
+        while self.timestamps and self.timestamps[0] <= now - self.period:
+            self.timestamps.popleft()
 
-    def acquire(self, tokens: int = 1) -> bool:
-        with self.lock:
-            self._refill()
-            if self.tokens >= tokens:
-                self.tokens -= tokens
-                return True
-            return False
-
-    def get_status(self) -> dict:
-        with self.lock:
-            self._refill()
-            return {
-                "tokens_available": round(self.tokens, 2),
-                "max_tokens": self.max_tokens,
-                "usage_percent": round((1 - self.tokens/self.max_tokens) * 100, 1)
-            }
-
-_limiter = RateLimiter()
-
-def acquire(tokens: int = 1) -> bool:
-    return _limiter.acquire(tokens)
-
-def get_status() -> dict:
-    return _limiter.get_status()
+        if len(self.timestamps) >= self.max_calls:
+            sleep_time = self.timestamps[0] + self.period - now + 0.1
+            if sleep_time > 0:
+                logger.warning(f"Rate limit reached. Sleeping for {sleep_time:.2f}s")
+                time.sleep(sleep_time)
+            
+            # Clean up again after sleep
+            self.wait_if_needed()
+        
+        self.timestamps.append(time.time())
