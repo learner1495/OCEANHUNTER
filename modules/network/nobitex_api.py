@@ -1,16 +1,27 @@
 # modules/network/nobitex_api.py
 import requests
 import urllib3
+import sys
+import os
 
 # Suppress SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Apply DNS Bypass
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
+try:
+    from modules.network.dns_bypass import apply_patch
+    apply_patch()
+    print("✅ DNS Bypass Engine Activated")
+except ImportError:
+    print("⚠️ Could not load DNS Bypass")
 
 class NobitexAPI:
     BASE_URL = "https://api.nobitex.ir"
 
     def __init__(self):
         self.session = requests.Session()
-        self.session.trust_env = False  # NO PROXIES
+        self.session.trust_env = False  # Ignore proxies
         
         self.session.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36",
@@ -28,8 +39,9 @@ class NobitexAPI:
         }
         
         try:
-            # Standard request, trusting the OS to resolve DNS
-            response = self.session.get(url, params=params, timeout=10, verify=False)
+            # We use the DOMAIN in the URL, but our patch will force the IP
+            # verify=False prevents SSL certificate matching errors if resolving is weird
+            response = self.session.get(url, params=params, timeout=15, verify=False)
             
             if response.status_code == 200:
                 data = response.json()
