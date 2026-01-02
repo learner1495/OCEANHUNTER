@@ -4,15 +4,14 @@ import urllib3
 import sys
 import os
 
-# Suppress SSL warnings
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 
-# Apply DNS Bypass
+# Apply Smart DNS Patch
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 try:
     from modules.network.dns_bypass import apply_patch
     apply_patch()
-    print("✅ Hybrid DNS Resolver Activated")
+    print("✅ Smart DNS Engine Activated")
 except ImportError:
     print("⚠️ Could not load DNS Bypass")
 
@@ -21,8 +20,7 @@ class NobitexAPI:
 
     def __init__(self):
         self.session = requests.Session()
-        self.session.trust_env = False  # Ignore proxies
-        
+        self.session.trust_env = False 
         self.session.headers.update({
             "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "application/json"
@@ -30,17 +28,11 @@ class NobitexAPI:
 
     def get_ohlcv(self, symbol, resolution="60", from_ts=None, to_ts=None):
         url = f"{self.BASE_URL}/market/udf/history"
-        
-        params = {
-            "symbol": symbol,
-            "resolution": resolution,
-            "from": from_ts,
-            "to": to_ts
-        }
+        params = {"symbol": symbol, "resolution": resolution, "from": from_ts, "to": to_ts}
         
         try:
-            # We use the DOMAIN name here. The monkey patch handles the IP.
-            print(f"   📡 Requesting: {url}")
+            print(f"   📡 Connecting to {url} ...")
+            # Verify=False is needed because SNI might mismatch slightly with direct IP injection
             response = self.session.get(url, params=params, timeout=20, verify=False)
             
             if response.status_code == 200:
