@@ -1,6 +1,6 @@
-# AI_Tools/build.py — V5.2.1 (Fix Windows Encoding Error)
+# AI_Tools/build.py — V5.2.2 (Fix Init Import Error)
 # ═══════════════════════════════════════════════════════════════
-# اصلاحیه: رفع مشکل ذخیره فایل تست در ویندوز + لایه شبکه
+# اصلاحیه: بازنویسی اجباری __init__.py برای رفع ImportError
 # ═══════════════════════════════════════════════════════════════
 
 import os
@@ -176,6 +176,11 @@ class NobitexAPI:
             return False, str(e)
 """
 
+# Correct Init Content (No get_client)
+INIT_FILE_CODE = """
+from .nobitex_api import NobitexAPI
+"""
+
 # ═══════════════════════════════════════════════════════════════
 # STEPS
 # ═══════════════════════════════════════════════════════════════
@@ -227,10 +232,9 @@ def step5_files():
     api_path = os.path.join(ROOT, "modules", "network", "nobitex_api.py")
     write_file(api_path, NOBITEX_API_CODE)
 
-    # 3. Ensure __init__.py exists
+    # 3. FORCE overwrite __init__.py to fix ImportError
     init_path = os.path.join(ROOT, "modules", "network", "__init__.py")
-    if not os.path.exists(init_path):
-        write_file(init_path, "")
+    write_file(init_path, INIT_FILE_CODE)
 
 def step6_modify():
     print("\n[6/9] ✏️ Modify...")
@@ -248,7 +252,7 @@ def step8_git():
     print("\n[8/9] 🐙 Git Sync...")
     try:
         setup_git.setup()
-        setup_git.sync(f"Build V5.2.1: Fix Windows Encoding")
+        setup_git.sync(f"Build V5.2.2: Fix Init Import Error")
         print("      ✅ Git synced")
     except Exception as e:
         log_error("Step8", e)
@@ -257,8 +261,6 @@ def step9_launch():
     print("\n[9/9] 🚀 Launch & Test...")
     print("      ℹ️ Testing Network Layer (Nobitex Connection)...")
     
-    # Small test script to verify Nobitex connection
-    # REMOVED EMOJIS TO PREVENT WINDOWS ENCODING ERRORS
     test_script = """
 import sys
 import os
@@ -302,7 +304,7 @@ print("-" * 50)
 def main():
     start_time = datetime.now()
     print("\n" + "═" * 60)
-    print(f"🔧 BUILD V5.2.1 — Network Layer (Fix Encoding)")
+    print(f"🔧 BUILD V5.2.2 — Network Layer (Import Fix)")
     print("═" * 60)
 
     try:
