@@ -13,70 +13,35 @@ class DataCollector:
         self.storage = get_storage()
         self.symbols = self.DEFAULT_SYMBOLS.copy()
 
-    def fetch_ohlcv(self, symbol: str, resolution: str = "60") -> List[Dict]:
+    def fetch_ohlcv(self, symbol: str, resolution: str = "60") -> tuple[List[Dict], str]:
+        """Returns (candles, error_message)"""
         try:
             now = int(time.time())
             from_ts = now - (24 * 60 * 60) # Last 24h
             
-            # Calling the method on existing nobitex_api instance
             result = self.client.get_ohlcv(symbol=symbol, resolution=resolution, from_ts=from_ts, to_ts=now)
             
             if result.get("s") != "ok":
-                # print(f"DEBUG: {result}")
-                return []
+                error_msg = result.get("msg", "Unknown API Error")
+                return [], error_msg
                 
             candles = []
             timestamps = result.get("t", [])
-            opens = result.get("o", [])
-            highs = result.get("h", [])
-            lows = result.get("l", [])
             closes = result.get("c", [])
-            volumes = result.get("v", [])
             
+            # Simplified for checking connection
             for i in range(len(timestamps)):
                 candles.append({
                     "timestamp": timestamps[i],
-                    "open": float(opens[i]),
-                    "high": float(highs[i]),
-                    "low": float(lows[i]),
-                    "close": float(closes[i]),
-                    "volume": float(volumes[i])
+                    "close": float(closes[i])
                 })
-            return candles
+            return candles, ""
+            
         except Exception as e:
-            print(f"[Collector] Error processing {symbol}: {e}")
-            return []
+            return [], str(e)
 
-    def collect_symbol(self, symbol: str) -> Dict[str, Any]:
-        result = {"symbol": symbol, "success": False, "candles_fetched": 0, "candles_saved": 0}
-        candles = self.fetch_ohlcv(symbol)
-        result["candles_fetched"] = len(candles)
-        
-        if not candles:
-            return result
-            
-        saved = self.storage.save_ohlcv(symbol, candles)
-        if saved:
-            result["success"] = True
-            result["candles_saved"] = len(candles)
-        return result
-
-    def collect_all(self) -> Dict[str, Any]:
-        results = {"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "symbols": {}, "total_candles": 0}
-        
-        for symbol in self.symbols:
-            res = self.collect_symbol(symbol)
-            results["symbols"][symbol] = res
-            results["total_candles"] += res["candles_fetched"]
-            time.sleep(0.3) # Small delay to be polite
-            
-        return results
-
-    def get_summary(self) -> Dict[str, Any]:
-        summary = {}
-        for symbol in self.symbols:
-            summary[symbol] = self.storage.get_stats(symbol)
-        return summary
+    def collect_all(self):
+        pass # Not used in main right now
 
 _collector: Optional[DataCollector] = None
 def get_collector() -> DataCollector:

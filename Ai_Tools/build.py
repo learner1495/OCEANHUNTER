@@ -1,4 +1,4 @@
-# AI_Tools/build.py — Build V5.7.3 (Integration Fix based on Screenshot)
+# AI_Tools/build.py — Build V5.7.4 (Direct Connection Fix)
 # ═══════════════════════════════════════════════════════════════
 
 import os
@@ -21,23 +21,8 @@ else:
     VENV_PYTHON = os.path.join(VENV_PATH, "bin", "python")
 
 # ═══════════════════════════════════════════════════════════════
-# 1. NETWORK LAYER FIX (Adapting to nobitex_api.py)
+# 1. NETWORK FIX (Bypass System Proxy)
 # ═══════════════════════════════════════════════════════════════
-
-# Updating __init__ to expose the API from nobitex_api.py
-NETWORK_INIT = '''# modules/network/__init__.py
-from .nobitex_api import NobitexAPI
-
-_client_instance = None
-
-def get_client():
-    global _client_instance
-    if _client_instance is None:
-        _client_instance = NobitexAPI()
-    return _client_instance
-'''
-
-# Standardizing nobitex_api.py to work with collector
 NOBITEX_API_PY = '''# modules/network/nobitex_api.py
 import requests
 import time
@@ -47,18 +32,18 @@ class NobitexAPI:
 
     def __init__(self):
         self.session = requests.Session()
+        # CRITICAL FIX: Bypass system proxies (broken VPNs)
+        self.session.trust_env = False 
+        
         self.session.headers.update({
-            "User-Agent": "Mozilla/5.0 (compatible; OceanHunter/5.0)",
-            "Accept": "application/json"
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+            "Accept": "application/json",
+            "Connection": "keep-alive"
         })
 
     def get_ohlcv(self, symbol, resolution="60", from_ts=None, to_ts=None):
-        """
-        Fetches OHLCV data directly from Nobitex Public API
-        """
         url = f"{self.BASE_URL}/market/udf/history"
         
-        # Ensure timestamps are integers
         if from_ts: from_ts = int(from_ts)
         if to_ts: to_ts = int(to_ts)
         
@@ -70,24 +55,30 @@ class NobitexAPI:
         }
         
         try:
-            # 10s timeout for direct connection
-            response = self.session.get(url, params=params, timeout=10)
+            # Increased timeout to 20s
+            response = self.session.get(url, params=params, timeout=20)
             
             if response.status_code == 200:
                 data = response.json()
                 if data.get("s") == "ok":
                     return data
                 else:
-                    return {"s": "error", "msg": "No data returned", "debug": data}
+                    return {"s": "error", "msg": f"API Status: {data.get('s')}", "debug": data}
             else:
-                return {"s": "error", "code": response.status_code}
+                return {"s": "error", "msg": f"HTTP {response.status_code}", "code": response.status_code}
                 
+        except requests.exceptions.ProxyError:
+            return {"s": "error", "msg": "Proxy Error (Check VPN)"}
+        except requests.exceptions.ConnectionError:
+            return {"s": "error", "msg": "Connection Failed (No Internet?)"}
+        except requests.exceptions.Timeout:
+            return {"s": "error", "msg": "Timeout (Slow Internet)"}
         except Exception as e:
             return {"s": "error", "msg": str(e)}
 '''
 
 # ═══════════════════════════════════════════════════════════════
-# 2. DATA COLLECTOR (Syntax Fixed)
+# 2. COLLECTOR (Show Errors)
 # ═══════════════════════════════════════════════════════════════
 COLLECTOR_PY = '''# modules/data/collector.py
 import time
@@ -104,70 +95,35 @@ class DataCollector:
         self.storage = get_storage()
         self.symbols = self.DEFAULT_SYMBOLS.copy()
 
-    def fetch_ohlcv(self, symbol: str, resolution: str = "60") -> List[Dict]:
+    def fetch_ohlcv(self, symbol: str, resolution: str = "60") -> tuple[List[Dict], str]:
+        """Returns (candles, error_message)"""
         try:
             now = int(time.time())
             from_ts = now - (24 * 60 * 60) # Last 24h
             
-            # Calling the method on existing nobitex_api instance
             result = self.client.get_ohlcv(symbol=symbol, resolution=resolution, from_ts=from_ts, to_ts=now)
             
             if result.get("s") != "ok":
-                # print(f"DEBUG: {result}")
-                return []
+                error_msg = result.get("msg", "Unknown API Error")
+                return [], error_msg
                 
             candles = []
             timestamps = result.get("t", [])
-            opens = result.get("o", [])
-            highs = result.get("h", [])
-            lows = result.get("l", [])
             closes = result.get("c", [])
-            volumes = result.get("v", [])
             
+            # Simplified for checking connection
             for i in range(len(timestamps)):
                 candles.append({
                     "timestamp": timestamps[i],
-                    "open": float(opens[i]),
-                    "high": float(highs[i]),
-                    "low": float(lows[i]),
-                    "close": float(closes[i]),
-                    "volume": float(volumes[i])
+                    "close": float(closes[i])
                 })
-            return candles
+            return candles, ""
+            
         except Exception as e:
-            print(f"[Collector] Error processing {symbol}: {e}")
-            return []
+            return [], str(e)
 
-    def collect_symbol(self, symbol: str) -> Dict[str, Any]:
-        result = {"symbol": symbol, "success": False, "candles_fetched": 0, "candles_saved": 0}
-        candles = self.fetch_ohlcv(symbol)
-        result["candles_fetched"] = len(candles)
-        
-        if not candles:
-            return result
-            
-        saved = self.storage.save_ohlcv(symbol, candles)
-        if saved:
-            result["success"] = True
-            result["candles_saved"] = len(candles)
-        return result
-
-    def collect_all(self) -> Dict[str, Any]:
-        results = {"timestamp": datetime.now().strftime("%Y-%m-%d %H:%M:%S"), "symbols": {}, "total_candles": 0}
-        
-        for symbol in self.symbols:
-            res = self.collect_symbol(symbol)
-            results["symbols"][symbol] = res
-            results["total_candles"] += res["candles_fetched"]
-            time.sleep(0.3) # Small delay to be polite
-            
-        return results
-
-    def get_summary(self) -> Dict[str, Any]:
-        summary = {}
-        for symbol in self.symbols:
-            summary[symbol] = self.storage.get_stats(symbol)
-        return summary
+    def collect_all(self):
+        pass # Not used in main right now
 
 _collector: Optional[DataCollector] = None
 def get_collector() -> DataCollector:
@@ -178,81 +134,53 @@ def get_collector() -> DataCollector:
 '''
 
 # ═══════════════════════════════════════════════════════════════
-# 3. ANALYSIS & MAIN
+# 3. MAIN (Debug Output)
 # ═══════════════════════════════════════════════════════════════
-TECHNICAL_PY = '''# modules/analysis/technical.py
-def calculate_rsi(prices, period=14):
-    if len(prices) < period + 1: return 50
-    gains, losses = [], []
-    for i in range(1, len(prices)):
-        delta = prices[i] - prices[i-1]
-        gains.append(max(delta, 0))
-        losses.append(abs(min(delta, 0)))
-    if not gains: return 50
-    avg_gain = sum(gains[-period:]) / period
-    avg_loss = sum(losses[-period:]) / period
-    if avg_loss == 0: return 100
-    rs = avg_gain / avg_loss
-    return round(100 - (100 / (1 + rs)), 2)
-
-def analyze_market(symbol, candles):
-    if not candles: return {"signal": "NEUTRAL", "reason": "No Data", "price": 0, "rsi": 0}
-    closes = [c['close'] for c in candles]
-    rsi = calculate_rsi(closes)
-    signal, reason = "NEUTRAL", f"RSI {rsi}"
-    if rsi < 30: signal, reason = "BUY 🟢", f"Oversold ({rsi})"
-    elif rsi > 70: signal, reason = "SELL 🔴", f"Overbought ({rsi})"
-    return {"symbol": symbol, "price": closes[-1], "rsi": rsi, "signal": signal, "reason": reason}
-'''
-
 MAIN_PY = '''#!/usr/bin/env python3
-"""OCEAN HUNTER V5.7.3 — Standardized Network"""
+"""OCEAN HUNTER V5.7.4 — Connectivity Diagnostic"""
 import os, sys, time
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 from dotenv import load_dotenv
 from modules.data.collector import get_collector
-from modules.analysis.technical import analyze_market
 
-TARGET_COINS = ["BTCIRT", "ETHIRT", "DOGEIRT", "SHIBIRT", "PEPEIRT"]
+TARGET_COINS = ["BTCIRT", "ETHIRT", "DOGEIRT"]
 
 def main():
     load_dotenv()
     print("\\n" + "=" * 60)
-    print("🌊 OCEAN HUNTER V5.7.3 — File System Integrated")
+    print("🌊 OCEAN HUNTER V5.7.4 — Direct Connection Mode")
+    print("   ⚠️  Ignoring System Proxies (Bypassing VPN settings)")
     print("=" * 60)
     
-    print("\\n[1] 🔌 Initializing Network (nobitex_api.py)...")
+    print("\\n[1] 🔌 Initializing Network...")
     try:
         collector = get_collector()
-        collector.symbols = TARGET_COINS
         print("      ✅ Collector Ready")
     except Exception as e:
-        print(f"      ❌ Failed to init collector: {e}")
+        print(f"      ❌ Failed to init: {e}")
         return
 
-    print(f"      Watching: {', '.join(TARGET_COINS)}")
-    print("\\n[2] 📊 Fetching & Analyzing Data...")
-    print(f"      {'SYMBOL':<10} | {'PRICE (IRT)':<15} | {'RSI':<6} | {'SIGNAL'}")
+    print("\\n[2] 📡 Testing Connectivity to Nobitex...")
+    print(f"      {'SYMBOL':<10} | {'STATUS':<15} | {'DETAIL'}")
     print("      " + "-" * 50)
     
-    try:
-        results = collector.collect_all()
-    except Exception as e:
-        print(f"      ❌ Collection Failed: {e}")
-        return
-    
+    success_count = 0
     for symbol in TARGET_COINS:
-        candles = collector.fetch_ohlcv(symbol)
+        candles, error = collector.fetch_ohlcv(symbol)
+        
         if candles:
-            analysis = analyze_market(symbol, candles)
-            print(f"      {symbol:<10} | {analysis['price']:<15,} | {analysis['rsi']:<6} | {analysis['signal']}")
-            if "BUY" in analysis['signal'] or "SELL" in analysis['signal']:
-                print(f"      Op >> 🔔 [MOCK] Alert: {analysis['reason']}")
+            last_price = candles[-1]['close']
+            print(f"      {symbol:<10} | {'✅ ONLINE':<15} | Price: {last_price:,.0f} IRT")
+            success_count += 1
         else:
-            print(f"      {symbol:<10} | {'ERROR':<15} | {'---':<6} | ❌ No Data")
+            print(f"      {symbol:<10} | {'❌ FAILED':<15} | {error}")
             
     print("\\n" + "=" * 60)
-    print("✅ SCAN COMPLETE")
+    if success_count == 0:
+        print("❌ CRITICAL: No connection.")
+        print("   Suggestion: Turn OFF all VPNs completely and retry.")
+    else:
+        print("✅ SUCCESS: Connection Established!")
     print("=" * 60 + "\\n")
 
 if __name__ == "__main__":
@@ -260,10 +188,8 @@ if __name__ == "__main__":
 '''
 
 FILES_TO_CREATE = {
-    "modules/network/__init__.py": NETWORK_INIT,       # FIXED: Links to nobitex_api
-    "modules/network/nobitex_api.py": NOBITEX_API_PY, # FIXED: Standardized methods
-    "modules/data/collector.py": COLLECTOR_PY,         # FIXED: Syntax
-    "modules/analysis/technical.py": TECHNICAL_PY,
+    "modules/network/nobitex_api.py": NOBITEX_API_PY, # Updated with Proxy Bypass
+    "modules/data/collector.py": COLLECTOR_PY,        # Updated to return errors
     "main.py": MAIN_PY
 }
 
@@ -271,13 +197,9 @@ FILES_TO_CREATE = {
 # BUILD STEPS
 # ═══════════════════════════════════════════════════════════════
 def step1_create_files():
-    print("\n[1/4] 📝 Synchronizing Files with Image Structure...")
+    print("\n[1/4] 📝 Updating Network Logic...")
     for path, content in FILES_TO_CREATE.items():
         full_path = os.path.join(ROOT, path)
-        dir_name = os.path.dirname(full_path)
-        if not os.path.exists(dir_name):
-            os.makedirs(dir_name)
-        
         with open(full_path, "w", encoding="utf-8") as f:
             f.write(content)
         print(f"      ✅ Updated: {path}")
@@ -286,7 +208,7 @@ def step2_git():
     print("\n[2/4] 🐙 Git Sync...")
     try:
         setup_git.setup()
-        setup_git.sync("Build V5.7.3: Fix Network Import Error")
+        setup_git.sync("Build V5.7.4: Direct Connection Fix")
         print("      ✅ Saved to History")
     except:
         print("      ⚠️ Git skipped")
@@ -300,11 +222,11 @@ def step3_context():
         pass
 
 def step4_launch():
-    print("\n[4/4] 🚀 Launching Scanner...")
+    print("\n[4/4] 🚀 Launching Diagnostic...")
     subprocess.run([VENV_PYTHON, "main.py"], cwd=ROOT)
 
 def main():
-    print("\n🚀 STARTING BUILD V5.7.3...")
+    print("\n🚀 STARTING BUILD V5.7.4...")
     step1_create_files()
     step2_git()
     step3_context()
