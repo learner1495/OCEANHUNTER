@@ -1,26 +1,4 @@
-# AI_Tools/build.py — Build V6.5 (Split Tunnel Strategy)
-# ═══════════════════════════════════════════════════════════════
-
-import os
-import sys
-import subprocess
-import setup_git
-
-# ═══════════════════════════════════════════════════════════════
-# CONFIG
-# ═══════════════════════════════════════════════════════════════
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(SCRIPT_DIR)
-VENV_PATH = os.path.join(ROOT, ".venv")
-if sys.platform == "win32":
-    VENV_PYTHON = os.path.join(VENV_PATH, "Scripts", "python.exe")
-else:
-    VENV_PYTHON = os.path.join(VENV_PATH, "bin", "python")
-
-# ═══════════════════════════════════════════════════════════════
-# SPLIT TUNNEL TEST SCRIPT
-# ═══════════════════════════════════════════════════════════════
-SPLIT_TEST_PY = '''import requests
+import requests
 import socket
 import urllib3
 import time
@@ -33,7 +11,7 @@ NOBITEX_URL = "https://api.nobitex.ir/market/global-stats"
 GOOGLE_CHECK = "https://www.google.com"
 
 def test_direct_nobitex():
-    print("\\n[1] TESTING DIRECT CONNECTION TO NOBITEX (IRAN IP)...")
+    print("\n[1] TESTING DIRECT CONNECTION TO NOBITEX (IRAN IP)...")
     session = requests.Session()
     session.trust_env = False  # IGNORE System Proxies
     
@@ -67,7 +45,7 @@ def test_direct_nobitex():
     return False
 
 def test_proxy_foreign():
-    print("\\n[2] TESTING PROXY CONNECTION FOR MEXC/TELEGRAM...")
+    print("\n[2] TESTING PROXY CONNECTION FOR MEXC/TELEGRAM...")
     proxies = {"http": PROXY_URL, "https": PROXY_URL}
     
     try:
@@ -92,7 +70,7 @@ def main():
     nobitex_ok = test_direct_nobitex()
     proxy_ok = test_proxy_foreign()
 
-    print("\\n" + "="*50)
+    print("\n" + "="*50)
     print("📊 FINAL DIAGNOSIS & ACTION PLAN")
     print("="*50)
 
@@ -108,34 +86,6 @@ def main():
     elif not proxy_ok:
         print("⚠️ PROXY ISSUE:")
         print("   V2RayN is not responding on port 10809.")
-
-if __name__ == "__main__":
-    main()
-'''
-
-# ═══════════════════════════════════════════════════════════════
-# BUILD STEPS
-# ═══════════════════════════════════════════════════════════════
-def main():
-    print("\n🚀 BUILD V6.5 — SPLIT TUNNELING")
-    
-    # Write the file
-    test_file = os.path.join(ROOT, "split_test.py")
-    with open(test_file, "w", encoding="utf-8") as f:
-        f.write(SPLIT_TEST_PY)
-    print(f"   📝 Created split_test.py")
-
-    # Git Sync
-    try:
-        setup_git.setup()
-        setup_git.sync("Build V6.5: Split Tunneling Test")
-    except: pass
-
-    # Run it
-    print("\n" + "="*50)
-    print("   RUNNING SPLIT TEST...")
-    print("="*50)
-    subprocess.run([VENV_PYTHON, "split_test.py"], cwd=ROOT)
 
 if __name__ == "__main__":
     main()
