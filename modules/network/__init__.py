@@ -1,9 +1,5 @@
-from .mexc_api import MexcAPI
-
-_client_instance = None
+from .mexc_api import MEXCClient
+from .telegram_bot import TelegramBot
 
 def get_client():
-    global _client_instance
-    if _client_instance is None:
-        _client_instance = MexcAPI()
-    return _client_instance
+    return MEXCClient()
