@@ -1,4 +1,4 @@
-# AI_Tools/build.py — Build V6.7 (Full Integration Test)
+# AI_Tools/build.py — Build V6.7 Fix (Full Integration Test)
 # ═══════════════════════════════════════════════════════════════
 
 import os
@@ -32,6 +32,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 load_dotenv()
 
 # --- CONFIG ---
+# We use the working proxy from previous tests
 PROXY_URL = "http://127.0.0.1:10809"
 PROXIES = {"http": PROXY_URL, "https": PROXY_URL}
 
@@ -128,7 +129,7 @@ if __name__ == "__main__":
 # BUILD STEPS
 # ═══════════════════════════════════════════════════════════════
 def main():
-    print("\n🚀 BUILD V6.7 — FULL SYSTEM TEST")
+    print("\n🚀 BUILD V6.7 (FIX) — FULL SYSTEM TEST")
     
     # Write the file
     test_file = os.path.join(ROOT, "full_test.py")
@@ -139,14 +140,16 @@ def main():
     # Git Sync
     try:
         setup_git.setup()
-        setup_git.sync("Build V6.7: Full Integration Test")
+        setup_git.sync("Build V6.7 Fix: Full Integration Test")
     except: pass
 
     # Run it
     print("\n" + "="*50)
     print("   RUNNING FULL SYSTEM TEST...")
     print("="*50)
-    subprocess.run([VENV_PYTHON], "full_test.ROOT")
+    
+    # FIXED LINE IS HERE:
+    subprocess.run([VENV_PYTHON, "full_test.py"], cwd=ROOT)
 
 if __name__ == "__main__":
     main()

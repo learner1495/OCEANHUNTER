@@ -10,6 +10,7 @@ urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 load_dotenv()
 
 # --- CONFIG ---
+# We use the working proxy from previous tests
 PROXY_URL = "http://127.0.0.1:10809"
 PROXIES = {"http": PROXY_URL, "https": PROXY_URL}
 
