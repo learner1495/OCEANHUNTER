@@ -5,6 +5,7 @@ import urllib3
 from dotenv import load_dotenv
 from modules.m_data import DataEngine
 from modules.m_analysis import analyze_market
+from modules.m_trader import PaperTrader
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 load_dotenv()
@@ -25,40 +26,60 @@ def send_telegram(msg):
 
 def main():
     print("-" * 50)
-    print("🧠 OCEAN HUNTER V7.1 — ANALYSIS ENGINE")
+    print("📜 OCEAN HUNTER V8.0 — PAPER TRADING")
     print("-" * 50)
     
     engine = DataEngine()
+    trader = PaperTrader(initial_balance=1000) # Start with $1000 Fake USDT
+    
     targets = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
+    current_prices = {}
     
-    report_msg = "🧠 OCEAN HUNTER ANALYSIS (V7.1)\n"
-    report_msg += "Strategy: RSI (14) - 1 Hour Timeframe\n"
-    report_msg += "─" * 20 + "\n\n"
+    report_msg = "📜 PAPER TRADING REPORT (V8.0)\n"
+    report_msg += "Strategy: RSI (14) | Fake Balance: $1000\n"
+    report_msg += "─" * 25 + "\n\n"
     
+    trade_logs = []
+
     for symbol in targets:
-        # 1. Fetch Data (Need at least 30 candles for accurate RSI)
+        # 1. Fetch Data
         candles = engine.fetch_candles(symbol, interval="60m", limit=50)
         
         if candles:
-            # 2. Save Data
-            engine.save_to_csv(symbol, candles)
-            
-            # 3. Analyze Data
+            # 2. Analyze
             result = analyze_market(symbol, candles)
+            current_prices[symbol] = result['price']
             
-            # 4. Format Output
-            price_str = f"${result['price']}"
-            if result['price'] < 10: price_str = f"${result['price']:.4f}"
-                
-            line = f"🔹 {symbol.replace('USDT','')}: {price_str}\n"
-            line += f"   RSI: {result['rsi']} → {result['signal']}\n"
+            # 3. Execute Trade (Simulation)
+            trade_action = trader.execute(symbol, result['signal'], result['price'])
+            
+            if trade_action:
+                trade_logs.append(trade_action)
+                print(f"   ⚡ ACTION: {trade_action}")
+            
+            # Format Report
+            icon = "⚪"
+            if "BUY" in result['signal']: icon = "🟢"
+            elif "SELL" in result['signal']: icon = "🔴"
+            
+            line = f"{icon} {symbol.replace('USDT','')}: ${result['price']}\n"
+            line += f"   RSI: {result['rsi']} ({result['signal'].split()[0]})\n"
             report_msg += line + "\n"
-            
-            print(f"   ✅ {symbol}: RSI={result['rsi']} ({result['signal']})")
         else:
             report_msg += f"❌ {symbol}: Connection Failed\n"
             
-    print(f"\n[3] 📨 Sending Analysis Report...")
+    # 4. Portfolio Summary
+    total_val = trader.get_portfolio_value(current_prices)
+    roi = ((total_val - 1000) / 1000) * 100
+    
+    report_msg += "─" * 25 + "\n"
+    report_msg += f"💰 Wallet: ${trader.state['usdt_balance']:.2f}\n"
+    report_msg += f"📊 Net Worth: ${total_val:.2f} ({roi:+.2f}%)\n"
+    
+    if trade_logs:
+        report_msg += "\n📝 NEW TRADES:\n" + "\n".join(trade_logs)
+            
+    print(f"\n[4] 📨 Sending Report (Val: ${total_val:.2f})...")
     send_telegram(report_msg)
     print("✅ Done.")
 

@@ -1,4 +1,4 @@
-# AI_Tools/build.py — Build V7.1 (Analysis Engine)
+# AI_Tools/build.py — Build V8.0 (Paper Trading Engine)
 # ═══════════════════════════════════════════════════════════════
 
 import os
@@ -18,72 +18,95 @@ else:
     VENV_PYTHON = os.path.join(VENV_PATH, "bin", "python")
 
 # ═══════════════════════════════════════════════════════════════
-# MODULE: ANALYSIS (m_analysis.py)
+# MODULE: TRADER (m_trader.py) - New Simulation Engine
 # ═══════════════════════════════════════════════════════════════
-M_ANALYSIS_CONTENT = '''
-def calculate_rsi(prices, period=14):
-    """Calculates Relative Strength Index (RSI)"""
-    if len(prices) < period + 1:
-        return 50  # Not enough data
-        
-    gains = []
-    losses = []
-    
-    # Calculate price changes
-    for i in range(1, len(prices)):
-        delta = prices[i] - prices[i-1]
-        if delta > 0:
-            gains.append(delta)
-            losses.append(0)
-        else:
-            gains.append(0)
-            losses.append(abs(delta))
-            
-    # Calculate initial average
-    avg_gain = sum(gains[:period]) / period
-    avg_loss = sum(losses[:period]) / period
-    
-    # Calculate smoothed averages
-    for i in range(period, len(prices) - 1):
-        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
-        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
-        
-    if avg_loss == 0:
-        return 100
-        
-    rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    return round(rsi, 2)
+M_TRADER_CONTENT = '''import json
+import os
+from datetime import datetime
 
-def analyze_market(symbol, candles):
-    """Analyzes market data and returns a signal"""
-    if not candles or len(candles) < 20:
-        return {"signal": "WAIT", "rsi": 0, "price": 0}
+class PaperTrader:
+    def __init__(self, initial_balance=1000):
+        self.state_file = "data/paper_state.json"
+        self.initial_balance = initial_balance
+        self.load_state()
+
+    def load_state(self):
+        """Loads the simulated wallet state"""
+        if os.path.exists(self.state_file):
+            with open(self.state_file, 'r') as f:
+                self.state = json.load(f)
+        else:
+            self.state = {
+                "usdt_balance": self.initial_balance,
+                "positions": {},  # Format: {"BTCUSDT": {"amount": 0.1, "entry_price": 50000}}
+                "history": []
+            }
+            self.save_state()
+
+    def save_state(self):
+        """Saves current wallet state"""
+        os.makedirs("data", exist_ok=True)
+        with open(self.state_file, 'w') as f:
+            json.dump(self.state, f, indent=4)
+
+    def execute(self, symbol, signal, price):
+        """Executes a paper trade based on signal"""
+        if "BUY" in signal:
+            return self.buy(symbol, price)
+        elif "SELL" in signal:
+            return self.sell(symbol, price)
+        return None
+
+    def buy(self, symbol, price):
+        # Only buy if we have USDT and no current position for this symbol
+        if self.state["usdt_balance"] > 10 and symbol not in self.state["positions"]:
+            # Invest 20% of available balance per trade
+            trade_amount_usdt = self.state["usdt_balance"] * 0.20
+            amount_crypto = trade_amount_usdt / price
+            
+            # Update State
+            self.state["usdt_balance"] -= trade_amount_usdt
+            self.state["positions"][symbol] = {
+                "amount": amount_crypto,
+                "entry_price": price,
+                "time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+            }
+            
+            log = f"🟢 PAPER BUY: {symbol} @ ${price} (Amt: {amount_crypto:.6f})"
+            self.state["history"].append(log)
+            self.save_state()
+            return log
+        return None
+
+    def sell(self, symbol, price):
+        # Only sell if we have a position
+        if symbol in self.state["positions"]:
+            pos = self.state["positions"][symbol]
+            amount = pos["amount"]
+            revenue = amount * price
+            profit = revenue - (amount * pos["entry_price"])
+            
+            # Update State
+            self.state["usdt_balance"] += revenue
+            del self.state["positions"][symbol]
+            
+            log = f"🔴 PAPER SELL: {symbol} @ ${price} | PnL: ${profit:.2f}"
+            self.state["history"].append(log)
+            self.save_state()
+            return log
+        return None
         
-    # Extract closing prices
-    closes = [float(c['close']) for c in candles]
-    current_price = closes[-1]
-    
-    # Calculate RSI
-    rsi = calculate_rsi(closes)
-    
-    # Logic Strategy
-    signal = "NEUTRAL ⚪"
-    if rsi < 30:
-        signal = "BUY 🟢 (Oversold)"
-    elif rsi > 70:
-        signal = "SELL 🔴 (Overbought)"
-        
-    return {
-        "symbol": symbol,
-        "price": current_price,
-        "rsi": rsi,
-        "signal": signal
-    }
+    def get_portfolio_value(self, current_prices):
+        """Calculates total value (USDT + Assets)"""
+        total = self.state["usdt_balance"]
+        for sym, pos in self.state["positions"].items():
+            current_price = current_prices.get(sym, pos["entry_price"])
+            total += pos["amount"] * current_price
+        return total
 '''
 
 # ═══════════════════════════════════════════════════════════════
-# MAIN APP UPDATE (main.py)
+# MAIN APP UPDATE (main.py) - Integrate Trader
 # ═══════════════════════════════════════════════════════════════
 MAIN_CONTENT = '''import os
 import time
@@ -92,6 +115,7 @@ import urllib3
 from dotenv import load_dotenv
 from modules.m_data import DataEngine
 from modules.m_analysis import analyze_market
+from modules.m_trader import PaperTrader
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 load_dotenv()
@@ -112,40 +136,60 @@ def send_telegram(msg):
 
 def main():
     print("-" * 50)
-    print("🧠 OCEAN HUNTER V7.1 — ANALYSIS ENGINE")
+    print("📜 OCEAN HUNTER V8.0 — PAPER TRADING")
     print("-" * 50)
     
     engine = DataEngine()
+    trader = PaperTrader(initial_balance=1000) # Start with $1000 Fake USDT
+    
     targets = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
+    current_prices = {}
     
-    report_msg = "🧠 OCEAN HUNTER ANALYSIS (V7.1)\\n"
-    report_msg += "Strategy: RSI (14) - 1 Hour Timeframe\\n"
-    report_msg += "─" * 20 + "\\n\\n"
+    report_msg = "📜 PAPER TRADING REPORT (V8.0)\\n"
+    report_msg += "Strategy: RSI (14) | Fake Balance: $1000\\n"
+    report_msg += "─" * 25 + "\\n\\n"
     
+    trade_logs = []
+
     for symbol in targets:
-        # 1. Fetch Data (Need at least 30 candles for accurate RSI)
+        # 1. Fetch Data
         candles = engine.fetch_candles(symbol, interval="60m", limit=50)
         
         if candles:
-            # 2. Save Data
-            engine.save_to_csv(symbol, candles)
-            
-            # 3. Analyze Data
+            # 2. Analyze
             result = analyze_market(symbol, candles)
+            current_prices[symbol] = result['price']
             
-            # 4. Format Output
-            price_str = f"${result['price']}"
-            if result['price'] < 10: price_str = f"${result['price']:.4f}"
-                
-            line = f"🔹 {symbol.replace('USDT','')}: {price_str}\\n"
-            line += f"   RSI: {result['rsi']} → {result['signal']}\\n"
+            # 3. Execute Trade (Simulation)
+            trade_action = trader.execute(symbol, result['signal'], result['price'])
+            
+            if trade_action:
+                trade_logs.append(trade_action)
+                print(f"   ⚡ ACTION: {trade_action}")
+            
+            # Format Report
+            icon = "⚪"
+            if "BUY" in result['signal']: icon = "🟢"
+            elif "SELL" in result['signal']: icon = "🔴"
+            
+            line = f"{icon} {symbol.replace('USDT','')}: ${result['price']}\\n"
+            line += f"   RSI: {result['rsi']} ({result['signal'].split()[0]})\\n"
             report_msg += line + "\\n"
-            
-            print(f"   ✅ {symbol}: RSI={result['rsi']} ({result['signal']})")
         else:
             report_msg += f"❌ {symbol}: Connection Failed\\n"
             
-    print(f"\\n[3] 📨 Sending Analysis Report...")
+    # 4. Portfolio Summary
+    total_val = trader.get_portfolio_value(current_prices)
+    roi = ((total_val - 1000) / 1000) * 100
+    
+    report_msg += "─" * 25 + "\\n"
+    report_msg += f"💰 Wallet: ${trader.state['usdt_balance']:.2f}\\n"
+    report_msg += f"📊 Net Worth: ${total_val:.2f} ({roi:+.2f}%)\\n"
+    
+    if trade_logs:
+        report_msg += "\\n📝 NEW TRADES:\\n" + "\\n".join(trade_logs)
+            
+    print(f"\\n[4] 📨 Sending Report (Val: ${total_val:.2f})...")
     send_telegram(report_msg)
     print("✅ Done.")
 
@@ -157,13 +201,13 @@ if __name__ == "__main__":
 # BUILD STEPS
 # ═══════════════════════════════════════════════════════════════
 def main():
-    print("\n🚀 BUILD V7.1 — ANALYSIS ENGINE")
+    print("\n🚀 BUILD V8.0 — PAPER TRADING ENGINE")
     
-    # 1. Create Analysis Module
+    # 1. Create Trader Module
     modules_dir = os.path.join(ROOT, "modules")
-    with open(os.path.join(modules_dir, "m_analysis.py"), "w", encoding="utf-8") as f:
-        f.write(M_ANALYSIS_CONTENT)
-    print(f"   📝 Created modules/m_analysis.py")
+    with open(os.path.join(modules_dir, "m_trader.py"), "w", encoding="utf-8") as f:
+        f.write(M_TRADER_CONTENT)
+    print(f"   📝 Created modules/m_trader.py")
     
     # 2. Update Main
     with open(os.path.join(ROOT, "main.py"), "w", encoding="utf-8") as f:
@@ -173,12 +217,12 @@ def main():
     # 3. Git Sync
     try:
         setup_git.setup()
-        setup_git.sync("Build V7.1: Added RSI Analysis")
+        setup_git.sync("Build V8.0: Added Paper Trading")
     except: pass
 
     # 4. Run
     print("\n" + "="*50)
-    print("   RUNNING V7.1 ANALYSIS...")
+    print("   RUNNING V8.0 SIMULATION...")
     print("="*50)
     subprocess.run([VENV_PYTHON, "main.py"], cwd=ROOT)
 
