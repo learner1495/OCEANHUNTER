@@ -1,26 +1,4 @@
-# AI_Tools/build.py — Build V6.8 (Time Sync Fix)
-# ═══════════════════════════════════════════════════════════════
-
-import os
-import sys
-import subprocess
-import setup_git
-
-# ═══════════════════════════════════════════════════════════════
-# CONFIG
-# ═══════════════════════════════════════════════════════════════
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(SCRIPT_DIR)
-VENV_PATH = os.path.join(ROOT, ".venv")
-if sys.platform == "win32":
-    VENV_PYTHON = os.path.join(VENV_PATH, "Scripts", "python.exe")
-else:
-    VENV_PYTHON = os.path.join(VENV_PATH, "bin", "python")
-
-# ═══════════════════════════════════════════════════════════════
-# MEXC TIME SYNC SCRIPT
-# ═══════════════════════════════════════════════════════════════
-TIME_FIX_PY = '''import requests
+import requests
 import os
 import time
 import urllib3
@@ -74,7 +52,7 @@ def test_account_with_sync():
     log(f"Difference:  {diff} ms")
 
     # 2. Prepare Request with recvWindow
-    print("\\n[2] 🔐 Checking Account Balance...")
+    print("\n[2] 🔐 Checking Account Balance...")
     endpoint = "/api/v3/account"
     
     # We use server_time directly and add a large recvWindow (60s)
@@ -94,7 +72,7 @@ def test_account_with_sync():
             # Show balances
             balances = [b for b in data['balances'] if float(b['free']) > 0 or float(b['locked']) > 0]
             if balances:
-                print("\\n   💰 YOUR WALLET ASSETS:")
+                print("\n   💰 YOUR WALLET ASSETS:")
                 for b in balances:
                     print(f"      - {b['asset']}: {b['free']}")
             else:
@@ -113,31 +91,3 @@ def test_account_with_sync():
 
 if __name__ == "__main__":
     test_account_with_sync()
-'''
-
-# ═══════════════════════════════════════════════════════════════
-# BUILD STEPS
-# ═══════════════════════════════════════════════════════════════
-def main():
-    print("\n🚀 BUILD V6.8 — TIME SYNC FIX")
-    
-    # Write the file
-    test_file = os.path.join(ROOT, "mexc_sync_test.py")
-    with open(test_file, "w", encoding="utf-8") as f:
-        f.write(TIME_FIX_PY)
-    print(f"   📝 Created mexc_sync_test.py")
-
-    # Git Sync
-    try:
-        setup_git.setup()
-        setup_git.sync("Build V6.8: Fix Timestamp/RecvWindow")
-    except: pass
-
-    # Run it
-    print("\n" + "="*50)
-    print("   RUNNING AUTH TEST WITH TIME SYNC...")
-    print("="*50)
-    subprocess.run([VENV_PYTHON, "mexc_sync_test.py"], cwd=ROOT)
-
-if __name__ == "__main__":
-    main()
