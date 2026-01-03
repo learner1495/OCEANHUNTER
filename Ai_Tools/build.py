@@ -1,4 +1,4 @@
-# AI_Tools/build.py — Build V7.0 (Data Engine Initialization)
+# AI_Tools/build.py — Build V7.1 (Analysis Engine)
 # ═══════════════════════════════════════════════════════════════
 
 import os
@@ -18,91 +18,72 @@ else:
     VENV_PYTHON = os.path.join(VENV_PATH, "bin", "python")
 
 # ═══════════════════════════════════════════════════════════════
-# MODULE: DATA ENGINE (m_data.py)
+# MODULE: ANALYSIS (m_analysis.py)
 # ═══════════════════════════════════════════════════════════════
-M_DATA_CONTENT = '''import requests
-import os
-import csv
-import time
-from datetime import datetime
-
-# --- CONFIG ---
-MEXC_BASE = "https://api.mexc.com"
-PROXY_URL = "http://127.0.0.1:10809"
-PROXIES = {"http": PROXY_URL, "https": PROXY_URL}
-
-class DataEngine:
-    def __init__(self, data_dir="data"):
-        self.data_dir = data_dir
-        if not os.path.exists(self.data_dir):
-            os.makedirs(self.data_dir)
-            
-    def fetch_candles(self, symbol, interval="60m", limit=50):
-        """
-        Fetch OHLCV Data from MEXC
-        Intervals: 1m, 5m, 15m, 30m, 60m, 4h, 1d, 1M
-        """
-        endpoint = "/api/v3/klines"
-        params = {
-            "symbol": symbol,
-            "interval": interval,
-            "limit": limit
-        }
+M_ANALYSIS_CONTENT = '''
+def calculate_rsi(prices, period=14):
+    """Calculates Relative Strength Index (RSI)"""
+    if len(prices) < period + 1:
+        return 50  # Not enough data
         
-        try:
-            print(f"   ⬇️ Fetching {symbol} ({interval})...")
-            resp = requests.get(
-                f"{MEXC_BASE}{endpoint}", 
-                params=params, 
-                proxies=PROXIES, 
-                verify=False, 
-                timeout=10
-            )
+    gains = []
+    losses = []
+    
+    # Calculate price changes
+    for i in range(1, len(prices)):
+        delta = prices[i] - prices[i-1]
+        if delta > 0:
+            gains.append(delta)
+            losses.append(0)
+        else:
+            gains.append(0)
+            losses.append(abs(delta))
             
-            if resp.status_code == 200:
-                data = resp.json()
-                # MEXC Format: [Open Time, Open, High, Low, Close, Volume, Close Time, ...]
-                processed_data = []
-                for candle in data:
-                    processed_data.append({
-                        "timestamp": candle[0],
-                        "datetime": datetime.fromtimestamp(candle[0]/1000).strftime('%Y-%m-%d %H:%M:%S'),
-                        "open": candle[1],
-                        "high": candle[2],
-                        "low": candle[3],
-                        "close": candle[4],
-                        "volume": candle[5]
-                    })
-                return processed_data
-            else:
-                print(f"   ❌ API Error: {resp.status_code} - {resp.text}")
-                return []
-                
-        except Exception as e:
-            print(f"   ❌ Connection Error: {e}")
-            return []
-
-    def save_to_csv(self, symbol, data):
-        if not data:
-            return False
-            
-        filename = os.path.join(self.data_dir, f"{symbol}_history.csv")
-        keys = data[0].keys()
+    # Calculate initial average
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+    
+    # Calculate smoothed averages
+    for i in range(period, len(prices) - 1):
+        avg_gain = (avg_gain * (period - 1) + gains[i]) / period
+        avg_loss = (avg_loss * (period - 1) + losses[i]) / period
         
-        try:
-            with open(filename, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.DictWriter(f, fieldnames=keys)
-                writer.writeheader()
-                writer.writerows(data)
-            print(f"   💾 Saved to {filename} ({len(data)} rows)")
-            return True
-        except Exception as e:
-            print(f"   ❌ Save Error: {e}")
-            return False
+    if avg_loss == 0:
+        return 100
+        
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return round(rsi, 2)
+
+def analyze_market(symbol, candles):
+    """Analyzes market data and returns a signal"""
+    if not candles or len(candles) < 20:
+        return {"signal": "WAIT", "rsi": 0, "price": 0}
+        
+    # Extract closing prices
+    closes = [float(c['close']) for c in candles]
+    current_price = closes[-1]
+    
+    # Calculate RSI
+    rsi = calculate_rsi(closes)
+    
+    # Logic Strategy
+    signal = "NEUTRAL ⚪"
+    if rsi < 30:
+        signal = "BUY 🟢 (Oversold)"
+    elif rsi > 70:
+        signal = "SELL 🔴 (Overbought)"
+        
+    return {
+        "symbol": symbol,
+        "price": current_price,
+        "rsi": rsi,
+        "signal": signal
+    }
 '''
 
 # ═══════════════════════════════════════════════════════════════
-# MAIN APP (main.py)
+# MAIN APP UPDATE (main.py)
 # ═══════════════════════════════════════════════════════════════
 MAIN_CONTENT = '''import os
 import time
@@ -110,6 +91,7 @@ import requests
 import urllib3
 from dotenv import load_dotenv
 from modules.m_data import DataEngine
+from modules.m_analysis import analyze_market
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 load_dotenv()
@@ -130,39 +112,40 @@ def send_telegram(msg):
 
 def main():
     print("-" * 50)
-    print("🚀 OCEAN HUNTER V7.0 — DATA ENGINE")
+    print("🧠 OCEAN HUNTER V7.1 — ANALYSIS ENGINE")
     print("-" * 50)
     
     engine = DataEngine()
-    
-    # Symbols to track (Defined in Architecture)
     targets = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
     
-    report_msg = "📊 OCEAN HUNTER DATA REPORT (V7.0)\\n\\n"
-    success_count = 0
+    report_msg = "🧠 OCEAN HUNTER ANALYSIS (V7.1)\\n"
+    report_msg += "Strategy: RSI (14) - 1 Hour Timeframe\\n"
+    report_msg += "─" * 20 + "\\n\\n"
     
     for symbol in targets:
-        # Fetch last 24 candles (1 Hour timeframe)
-        candles = engine.fetch_candles(symbol, interval="60m", limit=24)
+        # 1. Fetch Data (Need at least 30 candles for accurate RSI)
+        candles = engine.fetch_candles(symbol, interval="60m", limit=50)
         
         if candles:
-            saved = engine.save_to_csv(symbol, candles)
-            if saved:
-                last_price = candles[-1]['close']
-                report_msg += f"✅ {symbol}: ${last_price}\\n"
-                success_count += 1
-            else:
-                report_msg += f"⚠️ {symbol}: Save Failed\\n"
-        else:
-            report_msg += f"❌ {symbol}: Fetch Failed\\n"
+            # 2. Save Data
+            engine.save_to_csv(symbol, candles)
             
-    # Final Report
-    if success_count == len(targets):
-        report_msg += "\\n✅ All Systems Operational.\\nReady for Analysis."
-    else:
-        report_msg += "\\n⚠️ Some data streams failed."
-        
-    print(f"\\n[3] 📨 Sending Report...")
+            # 3. Analyze Data
+            result = analyze_market(symbol, candles)
+            
+            # 4. Format Output
+            price_str = f"${result['price']}"
+            if result['price'] < 10: price_str = f"${result['price']:.4f}"
+                
+            line = f"🔹 {symbol.replace('USDT','')}: {price_str}\\n"
+            line += f"   RSI: {result['rsi']} → {result['signal']}\\n"
+            report_msg += line + "\\n"
+            
+            print(f"   ✅ {symbol}: RSI={result['rsi']} ({result['signal']})")
+        else:
+            report_msg += f"❌ {symbol}: Connection Failed\\n"
+            
+    print(f"\\n[3] 📨 Sending Analysis Report...")
     send_telegram(report_msg)
     print("✅ Done.")
 
@@ -174,36 +157,28 @@ if __name__ == "__main__":
 # BUILD STEPS
 # ═══════════════════════════════════════════════════════════════
 def main():
-    print("\n🚀 BUILD V7.0 — DATA ENGINE INITIALIZATION")
+    print("\n🚀 BUILD V7.1 — ANALYSIS ENGINE")
     
-    # 1. Create Data Module
+    # 1. Create Analysis Module
     modules_dir = os.path.join(ROOT, "modules")
-    if not os.path.exists(modules_dir): os.makedirs(modules_dir)
-    
-    with open(os.path.join(modules_dir, "m_data.py"), "w", encoding="utf-8") as f:
-        f.write(M_DATA_CONTENT)
-    print(f"   📝 Created modules/m_data.py")
+    with open(os.path.join(modules_dir, "m_analysis.py"), "w", encoding="utf-8") as f:
+        f.write(M_ANALYSIS_CONTENT)
+    print(f"   📝 Created modules/m_analysis.py")
     
     # 2. Update Main
     with open(os.path.join(ROOT, "main.py"), "w", encoding="utf-8") as f:
         f.write(MAIN_CONTENT)
     print(f"   📝 Updated main.py")
 
-    # 3. Create Data Folder (Empty)
-    data_dir = os.path.join(ROOT, "data")
-    if not os.path.exists(data_dir):
-        os.makedirs(data_dir)
-        print(f"   📁 Created data/ directory")
-
-    # 4. Git Sync
+    # 3. Git Sync
     try:
         setup_git.setup()
-        setup_git.sync("Build V7.0: Data Engine + CSV Storage")
+        setup_git.sync("Build V7.1: Added RSI Analysis")
     except: pass
 
-    # 5. Run
+    # 4. Run
     print("\n" + "="*50)
-    print("   RUNNING V7.0 DATA TEST...")
+    print("   RUNNING V7.1 ANALYSIS...")
     print("="*50)
     subprocess.run([VENV_PYTHON, "main.py"], cwd=ROOT)
 

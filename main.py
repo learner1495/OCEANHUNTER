@@ -4,6 +4,7 @@ import requests
 import urllib3
 from dotenv import load_dotenv
 from modules.m_data import DataEngine
+from modules.m_analysis import analyze_market
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 load_dotenv()
@@ -24,39 +25,40 @@ def send_telegram(msg):
 
 def main():
     print("-" * 50)
-    print("🚀 OCEAN HUNTER V7.0 — DATA ENGINE")
+    print("🧠 OCEAN HUNTER V7.1 — ANALYSIS ENGINE")
     print("-" * 50)
     
     engine = DataEngine()
-    
-    # Symbols to track (Defined in Architecture)
     targets = ["BTCUSDT", "ETHUSDT", "SOLUSDT", "BNBUSDT", "XRPUSDT"]
     
-    report_msg = "📊 OCEAN HUNTER DATA REPORT (V7.0)\n\n"
-    success_count = 0
+    report_msg = "🧠 OCEAN HUNTER ANALYSIS (V7.1)\n"
+    report_msg += "Strategy: RSI (14) - 1 Hour Timeframe\n"
+    report_msg += "─" * 20 + "\n\n"
     
     for symbol in targets:
-        # Fetch last 24 candles (1 Hour timeframe)
-        candles = engine.fetch_candles(symbol, interval="60m", limit=24)
+        # 1. Fetch Data (Need at least 30 candles for accurate RSI)
+        candles = engine.fetch_candles(symbol, interval="60m", limit=50)
         
         if candles:
-            saved = engine.save_to_csv(symbol, candles)
-            if saved:
-                last_price = candles[-1]['close']
-                report_msg += f"✅ {symbol}: ${last_price}\n"
-                success_count += 1
-            else:
-                report_msg += f"⚠️ {symbol}: Save Failed\n"
-        else:
-            report_msg += f"❌ {symbol}: Fetch Failed\n"
+            # 2. Save Data
+            engine.save_to_csv(symbol, candles)
             
-    # Final Report
-    if success_count == len(targets):
-        report_msg += "\n✅ All Systems Operational.\nReady for Analysis."
-    else:
-        report_msg += "\n⚠️ Some data streams failed."
-        
-    print(f"\n[3] 📨 Sending Report...")
+            # 3. Analyze Data
+            result = analyze_market(symbol, candles)
+            
+            # 4. Format Output
+            price_str = f"${result['price']}"
+            if result['price'] < 10: price_str = f"${result['price']:.4f}"
+                
+            line = f"🔹 {symbol.replace('USDT','')}: {price_str}\n"
+            line += f"   RSI: {result['rsi']} → {result['signal']}\n"
+            report_msg += line + "\n"
+            
+            print(f"   ✅ {symbol}: RSI={result['rsi']} ({result['signal']})")
+        else:
+            report_msg += f"❌ {symbol}: Connection Failed\n"
+            
+    print(f"\n[3] 📨 Sending Analysis Report...")
     send_telegram(report_msg)
     print("✅ Done.")
 
