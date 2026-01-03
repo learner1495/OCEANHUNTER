@@ -1,27 +1,4 @@
-# AI_Tools/build.py — Build V6.4 (Smart Proxy Scanner)
-# ═══════════════════════════════════════════════════════════════
-
-import os
-import sys
-import subprocess
-import setup_git
-import context_gen
-
-# ═══════════════════════════════════════════════════════════════
-# CONFIG
-# ═══════════════════════════════════════════════════════════════
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(SCRIPT_DIR)
-VENV_PATH = os.path.join(ROOT, ".venv")
-if sys.platform == "win32":
-    VENV_PYTHON = os.path.join(VENV_PATH, "Scripts", "python.exe")
-else:
-    VENV_PYTHON = os.path.join(VENV_PATH, "bin", "python")
-
-# ═══════════════════════════════════════════════════════════════
-# PROXY SCANNER & CONNECT SCRIPT
-# ═══════════════════════════════════════════════════════════════
-PROXY_SCANNER_PY = '''import requests
+import requests
 import socket
 import os
 import urllib3
@@ -39,7 +16,7 @@ def check_port(ip, port):
     return result == 0
 
 def test_connection(proxy_url, name):
-    print(f"\\n🔌 Testing Proxy: {name} -> {proxy_url}")
+    print(f"\n🔌 Testing Proxy: {name} -> {proxy_url}")
     proxies = {"http": proxy_url, "https": proxy_url}
     
     try:
@@ -88,7 +65,7 @@ def main():
 
     for name, ip, port, protocol in candidates:
         if check_port(ip, port):
-            print(f"\\n🔍 Port {port} ({name}) is OPEN.")
+            print(f"\n🔍 Port {port} ({name}) is OPEN.")
             
             # Construct proxy string
             if protocol == "socks5":
@@ -99,7 +76,7 @@ def main():
 
             if test_connection(proxy_str, name):
                 valid_proxy_found = True
-                print("\\n" + "="*50)
+                print("\n" + "="*50)
                 print(f"💡 FIX FOUND: Update your .env file to use PORT {port}")
                 print(f"   Change PROXY_PORT={port}")
                 print(f"   Change PROXY_TYPE={protocol.upper()}")
@@ -109,39 +86,9 @@ def main():
             print(f"❌ Port {port} ({name}) is CLOSED (Not running).")
 
     if not valid_proxy_found:
-        print("\\n⚠️ NO WORKING PROXY FOUND.")
+        print("\n⚠️ NO WORKING PROXY FOUND.")
         print("   1. Ensure V2RayN is RUNNING.")
         print("   2. Ensure the bottom bar says 'Enable Tun' or 'System Proxy' is NOT needed, but the core must be running.")
-
-if __name__ == "__main__":
-    main()
-'''
-
-# ═══════════════════════════════════════════════════════════════
-# BUILD STEPS
-# ═══════════════════════════════════════════════════════════════
-def main():
-    print("\n🚀 BUILD V6.4 — PROXY DIAGNOSIS")
-    
-    # Write the file
-    test_file = os.path.join(ROOT, "proxy_fixer.py")
-    with open(test_file, "w", encoding="utf-8") as f:
-        f.write(PROXY_SCANNER_PY)
-    print(f"   📝 Created proxy_fixer.py")
-
-    # Git Sync
-    try:
-        setup_git.setup()
-        setup_git.sync("Build V6.4: Auto-detect correct V2Ray port")
-    except: pass
-
-    # Run it
-    print("\n" + "="*50)
-    print("   RUNNING PROXY FIXER...")
-    print("="*50)
-    # We install requests[socks] just in case we need socks support
-    subprocess.run([VENV_PYTHON, "-m", "pip", "install", "requests[socks]", "p"], capture_output=True)
-    subprocess.run([VENV_PYTHON, "proxy_fixer.py"], cwd=ROOT)
 
 if __name__ == "__main__":
     main()
