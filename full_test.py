@@ -1,26 +1,4 @@
-# AI_Tools/build.py — Build V6.7 (Full Integration Test)
-# ═══════════════════════════════════════════════════════════════
-
-import os
-import sys
-import subprocess
-import setup_git
-
-# ═══════════════════════════════════════════════════════════════
-# CONFIG
-# ═══════════════════════════════════════════════════════════════
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(SCRIPT_DIR)
-VENV_PATH = os.path.join(ROOT, ".venv")
-if sys.platform == "win32":
-    VENV_PYTHON = os.path.join(VENV_PATH, "Scripts", "python.exe")
-else:
-    VENV_PYTHON = os.path.join(VENV_PATH, "bin", "python")
-
-# ═══════════════════════════════════════════════════════════════
-# FULL SYSTEM TEST SCRIPT
-# ═══════════════════════════════════════════════════════════════
-FULL_TEST_PY = '''import requests
+import requests
 import os
 import time
 import urllib3
@@ -45,7 +23,7 @@ def log(msg):
     print(f"   {msg}")
 
 def test_telegram():
-    print("\\n[1] 📨 TESTING TELEGRAM...")
+    print("\n[1] 📨 TESTING TELEGRAM...")
     if not TG_TOKEN or not TG_CHAT_ID:
         log("❌ FAIL: Token or Chat ID missing in .env")
         return False
@@ -53,7 +31,7 @@ def test_telegram():
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
     payload = {
         "chat_id": TG_CHAT_ID,
-        "text": "🌊 OCEAN HUNTER: System Operational!\\n✅ Connected to MEXC\\n✅ Proxy Active (10809)"
+        "text": "🌊 OCEAN HUNTER: System Operational!\n✅ Connected to MEXC\n✅ Proxy Active (10809)"
     }
     
     try:
@@ -72,7 +50,7 @@ def get_mexc_signature(query_string):
     return hmac.new(MEXC_SECRET.encode(), query_string.encode(), hashlib.sha256).hexdigest()
 
 def test_mexc_private():
-    print("\\n[2] 🔐 TESTING MEXC PRIVATE API (ACCOUNT)...")
+    print("\n[2] 🔐 TESTING MEXC PRIVATE API (ACCOUNT)...")
     if not MEXC_KEY or not MEXC_SECRET:
         log("⚠️ SKIPPING: API Keys missing in .env")
         return
@@ -119,34 +97,6 @@ def main():
         print("🎉 GREAT JOB! The bot is ready to hunt on MEXC.")
     else:
         print("⚠️ Telegram failed. Check your Token/ChatID or VPN.")
-
-if __name__ == "__main__":
-    main()
-'''
-
-# ═══════════════════════════════════════════════════════════════
-# BUILD STEPS
-# ═══════════════════════════════════════════════════════════════
-def main():
-    print("\n🚀 BUILD V6.7 — FULL SYSTEM TEST")
-    
-    # Write the file
-    test_file = os.path.join(ROOT, "full_test.py")
-    with open(test_file, "w", encoding="utf-8") as f:
-        f.write(FULL_TEST_PY)
-    print(f"   📝 Created full_test.py")
-
-    # Git Sync
-    try:
-        setup_git.setup()
-        setup_git.sync("Build V6.7: Full Integration Test")
-    except: pass
-
-    # Run it
-    print("\n" + "="*50)
-    print("   RUNNING FULL SYSTEM TEST...")
-    print("="*50)
-    subprocess.run([VENV_PYTHON], "full_test.ROOT")
 
 if __name__ == "__main__":
     main()
