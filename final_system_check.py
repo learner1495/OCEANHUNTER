@@ -1,26 +1,4 @@
-# AI_Tools/build.py — Build V6.9 (Final Integration)
-# ═══════════════════════════════════════════════════════════════
-
-import os
-import sys
-import subprocess
-import setup_git
-
-# ═══════════════════════════════════════════════════════════════
-# CONFIG
-# ═══════════════════════════════════════════════════════════════
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT = os.path.dirname(SCRIPT_DIR)
-VENV_PATH = os.path.join(ROOT, ".venv")
-if sys.platform == "win32":
-    VENV_PYTHON = os.path.join(VENV_PATH, "Scripts", "python.exe")
-else:
-    VENV_PYTHON = os.path.join(VENV_PATH, "bin", "python")
-
-# ═══════════════════════════════════════════════════════════════
-# FINAL CHECK SCRIPT
-# ═══════════════════════════════════════════════════════════════
-FINAL_CHECK_PY = '''import requests
+import requests
 import os
 import time
 import urllib3
@@ -57,7 +35,7 @@ def get_signature(query_string):
     return hmac.new(MEXC_SECRET.encode(), query_string.encode(), hashlib.sha256).hexdigest()
 
 def send_telegram(message):
-    print(f"\\n[3] 📨 Sending Telegram Report...")
+    print(f"\n[3] 📨 Sending Telegram Report...")
     if not TG_TOKEN or not TG_CHAT_ID:
         log("❌ Telegram Config Missing")
         return
@@ -91,26 +69,26 @@ def main():
     final_url = f"{MEXC_BASE}{endpoint}?{query}&signature={signature}"
     headers = {"X-MEXC-APIKEY": MEXC_KEY}
 
-    report_msg = "🌊 OCEAN HUNTER REPORT\\n\\n"
-    report_msg += "✅ System Online (V6.9)\\n"
-    report_msg += "✅ Proxy Active (10809)\\n"
+    report_msg = "🌊 OCEAN HUNTER REPORT\n\n"
+    report_msg += "✅ System Online (V6.9)\n"
+    report_msg += "✅ Proxy Active (10809)\n"
 
     try:
         resp = requests.get(final_url, headers=headers, proxies=PROXIES, verify=False, timeout=10)
         if resp.status_code == 200:
             data = resp.json()
             log("✅ MEXC Connected!")
-            report_msg += "✅ MEXC Authenticated\\n\\n💰 Assets:\\n"
+            report_msg += "✅ MEXC Authenticated\n\n💰 Assets:\n"
             
             balances = [b for b in data['balances'] if float(b['free']) > 0]
             if balances:
                 for b in balances:
                     line = f"{b['asset']}: {b['free']}"
                     log(f"   💰 {line}")
-                    report_msg += f"- {line}\\n"
+                    report_msg += f"- {line}\n"
             else:
                 log("   💰 Wallet Empty")
-                report_msg += "- Wallet Empty (Ready to Deposit)\\n"
+                report_msg += "- Wallet Empty (Ready to Deposit)\n"
         else:
             err = f"HTTP {resp.status_code} - {resp.text}"
             log(f"❌ {err}")
@@ -123,34 +101,6 @@ def main():
     # 3. Send Report
     send_telegram(report_msg)
     print("-" * 50)
-
-if __name__ == "__main__":
-    main()
-'''
-
-# ═══════════════════════════════════════════════════════════════
-# BUILD STEPS
-# ═══════════════════════════════════════════════════════════════
-def main():
-    print("\n🚀 BUILD V6.9 — FINAL INTEGRATION")
-    
-    # Write the file
-    test_file = os.path.join(ROOT, "final_system_check.py")
-    with open(test_file, "w", encoding="utf-8") as f:
-        f.write(FINAL_CHECK_PY)
-    print(f"   📝 Created final_system_check.py")
-
-    # Git Sync
-    try:
-        setup_git.setup()
-        setup_git.sync("Build V6.9: Integrated MEXC + Telegram Check")
-    except: pass
-
-    # Run it
-    print("\n" + "="*50)
-    print("   RUNNING FINAL SYSTEM CHECK...")
-    print("="*50)
-    subprocess.run([VENV_PYTHON, "final_system_check.py"], cwd=ROOT)
 
 if __name__ == "__main__":
     main()
