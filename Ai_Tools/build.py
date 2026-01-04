@@ -1,7 +1,7 @@
-# AI_Tools/build.py — Phase 5: Backtest Runner & Reporting (FIXED)
-# ═══════════════════════════════════════════════════════════════
-# Ref: GEMINI-PHASE5-RUNNER-FIX
-# ═══════════════════════════════════════════════════════════════
+# AI_Tools/build.py — Phase 6: Strategy Injection (Smart Sniper V10.8.2)
+# ══════════════════════════════════════════════════════════════════════
+# Ref: OCEAN-HUNTER-PHASE6-STRATEGY
+# ══════════════════════════════════════════════════════════════════════
 
 import os
 import sys
@@ -20,93 +20,161 @@ VENV_PATH = os.path.join(ROOT, ".venv")
 VENV_PYTHON = os.path.join(VENV_PATH, "Scripts", "python.exe") if sys.platform == "win32" else os.path.join(VENV_PATH, "bin", "python")
 
 # ═══════════════════════════════════════════════════════════════
-# ⭐ CONTENT GENERATION (Phase 5 Logic)
+# ⭐ STRATEGY LOGIC (Phase 6)
 # ═══════════════════════════════════════════════════════════════
 
-# 1. The Backtest Runner Class
-RUNNER_CODE = """
+SMART_SNIPER_CODE = """
+import pandas as pd
+import numpy as np
 import logging
-import time
-from tests.core.virtual_wallet import VirtualWallet
-from tests.core.data_engine import CsvCandlePlayer
-from tests.core.simulator import MarketSimulator
-from tests.core.test_provider import TestSimulatorProvider
 
-logger = logging.getLogger("BacktestRunner")
-
-class BacktestRunner:
+class SmartSniperStrategy:
     \"\"\"
-    Orchestrates the entire backtest process:
-    1. Sets up Wallet, Data, Simulator, Provider.
-    2. Initializes the Strategy with the Provider.
-    3. Runs the simulation loop.
-    4. Generates a Performance Report.
+    🌊 Ocean Hunter Strategy: Smart Sniper V10.8.2
+    
+    Logic:
+    1. Indicators: RSI(14), MACD(12,26,9), Bollinger Bands(20, 2std)
+    2. Entry: Score-based system (RSI Dip + BB Touch + MACD Histogram)
+    3. Exit: Fixed TP/SL or RSI Overbought
     \"\"\"
-    def __init__(self, csv_path, initial_capital=1000.0, symbol="SOL"):
+    def __init__(self, provider, symbol, risk_per_trade=0.98):
+        self.provider = provider
         self.symbol = symbol
-        self.initial_capital = initial_capital
+        self.risk_per_trade = risk_per_trade # Use 98% of available balance
         
-        # Core Components
-        self.wallet = VirtualWallet(initial_balances={"USDT": initial_capital})
-        self.data_engine = CsvCandlePlayer(csv_path)
-        self.simulator = MarketSimulator(self.wallet, self.data_engine)
-        self.provider = TestSimulatorProvider(self.simulator)
+        # History Buffer for Calculation
+        self.history = []
+        self.warmup_period = 35 # Min candles needed for MACD/RSI
         
-        # Stats
-        self.trades = []
-        self.start_time = time.time()
+        # Position Management
+        self.position_size = 0.0
+        self.entry_price = 0.0
+        
+        # Risk Settings
+        self.tp_percent = 0.015  # 1.5% Target
+        self.sl_percent = 0.010  # 1.0% Stop Loss
 
-    def run(self, strategy_class):
-        \"\"\"
-        Runs the backtest using the given Strategy Class.
-        strategy_class: A class that accepts (provider, symbol) and has on_candle() method.
-        \"\"\"
-        print(f"🚀 Starting Backtest on {self.symbol}...")
+    def _calculate_indicators(self, df):
+        \"\"\"Calculates Technical Indicators on the DataFrame\"\"\"
+        # RSI
+        delta = df['close'].diff()
+        gain = (delta.where(delta > 0, 0)).rolling(window=14).mean()
+        loss = (-delta.where(delta < 0, 0)).rolling(window=14).mean()
+        rs = gain / loss
+        df['rsi'] = 100 - (100 / (1 + rs))
         
-        # Initialize Strategy
-        strategy = strategy_class(self.provider, self.symbol)
+        # Bollinger Bands
+        df['bb_mid'] = df['close'].rolling(window=20).mean()
+        df['bb_std'] = df['close'].rolling(window=20).std()
+        df['bb_upper'] = df['bb_mid'] + (df['bb_std'] * 2)
+        df['bb_lower'] = df['bb_mid'] - (df['bb_std'] * 2)
         
-        steps = 0
-        while self.simulator.run_step():
-            # Get current candle data
-            candle = self.simulator.current_candle
+        # MACD
+        exp12 = df['close'].ewm(span=12, adjust=False).mean()
+        exp26 = df['close'].ewm(span=26, adjust=False).mean()
+        df['macd'] = exp12 - exp26
+        df['signal'] = df['macd'].ewm(span=9, adjust=False).mean()
+        
+        return df.iloc[-1] # Return only the latest row
+
+    def on_candle(self, candle):
+        \"\"\"Main Logic Loop called on every new candle\"\"\"
+        # 1. Update History
+        self.history.append({
+            'open': candle['open'],
+            'high': candle['high'],
+            'low': candle['low'],
+            'close': candle['close'],
+            'volume': candle['volume']
+        })
+        
+        # Keep history manageable (last 100 candles is enough)
+        if len(self.history) > 100:
+            self.history.pop(0)
             
-            # Tick the strategy
-            strategy.on_candle(candle)
-            steps += 1
+        # 2. Warmup Check
+        if len(self.history) < self.warmup_period:
+            return
+
+        # 3. Calculate Indicators
+        df = pd.DataFrame(self.history)
+        latest = self._calculate_indicators(df)
+        
+        current_price = latest['close']
+        rsi = latest['rsi']
+        
+        # 4. Check Exit Conditions (If we have a position)
+        if self.position_size > 0:
+            self._check_exit(current_price, rsi)
+            return
+
+        # 5. Check Entry Conditions (If we have NO position)
+        self._check_entry(latest)
+
+    def _check_entry(self, latest):
+        score = 0
+        price = latest['close']
+        
+        # ─── SCORING SYSTEM ───
+        
+        # A. RSI Condition (Oversold)
+        if latest['rsi'] < 30:
+            score += 40
+        elif latest['rsi'] < 40:
+            score += 20
             
-            if steps % 100 == 0:
-                print(f"   ⏳ Processed {steps} candles...", end='\\r')
+        # B. Bollinger Band Condition (Dip)
+        if price <= latest['bb_lower']:
+            score += 30 # Strong Signal: Touching Lower Band
+        elif price <= (latest['bb_lower'] * 1.005):
+            score += 10 # Near Lower Band
+            
+        # C. MACD Condition (Momentum)
+        if latest['macd'] > latest['signal']:
+            score += 10 # Bullish Momentum
 
-        print(f"\\n✅ Backtest Complete. Processed {steps} candles.")
-        return self._generate_report()
+        # ─── EXECUTION ───
+        THRESHOLD = 50 
+        
+        if score >= THRESHOLD:
+            balance = self.provider.get_balance("USDT")
+            if balance > 10:
+                amount_to_spend = balance * self.risk_per_trade
+                qty = amount_to_spend / price
+                
+                print(f"   ⚡ SIGNAL FIRED (Score: {score}) | RSI: {latest['rsi']:.1f} | Price: {price:.2f}")
+                self.provider.create_order(self.symbol, "BUY", "MARKET", qty)
+                
+                self.position_size = qty
+                self.entry_price = price
 
-    def _generate_report(self):
-        \"\"\"Calculates basic performance metrics.\"\"\"
-        final_balance = self.wallet.get_balance("USDT")
+    def _check_exit(self, current_price, rsi):
+        # Calculate PnL %
+        pnl_pct = (current_price - self.entry_price) / self.entry_price
         
-        # Calculate Asset Value (sell everything at last price)
-        last_price = self.simulator.get_market_price()
-        asset_qty = self.wallet.get_balance(self.symbol)
-        asset_value = asset_qty * last_price
+        exit_reason = None
         
-        total_equity = final_balance + asset_value
-        pnl = total_equity - self.initial_capital
-        roi = (pnl / self.initial_capital) * 100
-        
-        report = {
-            "initial_capital": self.initial_capital,
-            "final_equity": total_equity,
-            "pnl": pnl,
-            "roi": roi,
-            "symbol": self.symbol,
-            "simulated_trades": len(self.provider.orders) if hasattr(self.provider, 'orders') else "N/A"
-        }
-        return report
+        # 1. Take Profit
+        if pnl_pct >= self.tp_percent:
+            exit_reason = "✅ TP Hit"
+            
+        # 2. Stop Loss
+        elif pnl_pct <= -self.sl_percent:
+            exit_reason = "❌ SL Hit"
+            
+        # 3. RSI Overbought (Sniper Exit)
+        elif rsi > 70 and pnl_pct > 0.005: # Only exit on RSI if in profit
+            exit_reason = "⚠️ RSI Overbought"
+
+        if exit_reason:
+            print(f"   🔄 EXITING: {exit_reason} | PnL: {pnl_pct*100:.2f}%")
+            self.provider.create_order(self.symbol, "SELL", "MARKET", self.position_size)
+            self.position_size = 0.0
+            self.entry_price = 0.0
 """
 
-# 2. A Mock Strategy for Testing the Runner
-RUN_PHASE5_SCRIPT = """
+# Test Script for Phase 6
+RUN_PHASE6_SCRIPT = """
 import os
 import sys
 import requests
@@ -116,6 +184,7 @@ from dotenv import load_dotenv
 sys.path.append(os.getcwd())
 
 from tests.runners.backtest_runner import BacktestRunner
+from tests.strategies.smart_sniper import SmartSniperStrategy
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -131,50 +200,8 @@ def send_telegram(msg):
                       json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}, timeout=5)
     except: pass
 
-# --- Mock Strategy for Phase 5 Test ---
-class SimpleRSIStrategy:
-    \"\"\"
-    A simple logic to test the Runner:
-    - Buy if price drops 1% below previous close (Dip Buy)
-    - Sell if price rises 1% above avg buy
-    \"\"\"
-    def __init__(self, provider, symbol):
-        self.provider = provider
-        self.symbol = symbol
-        self.position = 0
-        self.last_close = 0
-
-    def on_candle(self, candle):
-        close = candle['close']
-        
-        # Skip first candle
-        if self.last_close == 0:
-            self.last_close = close
-            return
-
-        # Simple Logic
-        change = (close - self.last_close) / self.last_close
-        
-        # BUY Logic (Dip)
-        if change < -0.005 and self.position == 0: # -0.5% drop
-            balance = self.provider.get_balance("USDT")
-            if balance > 10:
-                qty = (balance * 0.99) / close # Use 99% of cash
-                self.provider.create_order(self.symbol, "BUY", "MARKET", qty)
-                self.position = qty
-                print(f"      🔵 BUY Signal at {close:.2f}")
-
-        # SELL Logic (Profit)
-        elif change > 0.005 and self.position > 0: # +0.5% pump
-            self.provider.create_order(self.symbol, "SELL", "MARKET", self.position)
-            print(f"      🟠 SELL Signal at {close:.2f}")
-            self.position = 0
-
-        self.last_close = close
-
-# --- Main Execution ---
 def main():
-    print("🚀 STARTING PHASE 5: BACKTEST RUNNER TEST")
+    print("🚀 STARTING PHASE 6: SMART SNIPER INJECTION")
     
     # Locate Data
     csv_path = os.path.join("tests", "data", "candles", "SOL_M15.csv")
@@ -185,27 +212,30 @@ def main():
         else:
             print("❌ No CSV found."); sys.exit(1)
 
-    # Init Runner
-    runner = BacktestRunner(csv_path, initial_capital=5000.0, symbol="SOL")
+    # Init Runner with $1000
+    runner = BacktestRunner(csv_path, initial_capital=1000.0, symbol="SOL")
     
-    # Run with our Simple Strategy
-    stats = runner.run(SimpleRSIStrategy)
+    # Run with REAL Smart Sniper Strategy
+    stats = runner.run(SmartSniperStrategy)
     
     # Report
     print("-" * 30)
-    print(f"📊 REPORT FOR {stats['symbol']}")
+    print(f"📊 REPORT FOR {stats['symbol']} (Smart Sniper V10.8.2)")
     print(f"💰 Start Capital: ${stats['initial_capital']:.2f}")
     print(f"🏁 Final Equity: ${stats['final_equity']:.2f}")
     print(f"📈 PnL: ${stats['pnl']:.2f} ({stats['roi']:.2f}%)")
+    print(f"🔢 Trades Executed: {stats['simulated_trades']}")
     print("-" * 30)
     
     msg = (
-        "🏆 **Ocean Hunter: Phase 5 Complete**\\n\\n"
-        "✅ **Backtest Runner Operational**\\n"
+        "🧠 **Ocean Hunter: Phase 6 Complete**\\n\\n"
+        "✅ **Strategy Injection Successful**\\n"
+        "🔫 Model: `Smart Sniper V10.8.2`\\n"
         f"📊 Symbol: `{stats['symbol']}`\\n"
-        f"💰 Final Equity: `{stats['final_equity']:.2f} USDT`\\n"
-        f"📈 ROI: `{stats['roi']:.2f}%`\\n\\n"
-        "Ready for REAL Strategy Injection (Smart Sniper)."
+        f"💰 Equity: `{stats['final_equity']:.2f} USDT`\\n"
+        f"📈 ROI: `{stats['roi']:.2f}%`\\n"
+        f"🔢 Trades: `{stats['simulated_trades']}`\\n\\n"
+        "Ready for Stress Test (Phase 7)."
     )
     send_telegram(msg)
 
@@ -217,8 +247,8 @@ if __name__ == "__main__":
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════
 NEW_FILES = {
-    "tests/runners/backtest_runner.py": RUNNER_CODE,
-    "run_phase5.py": RUN_PHASE5_SCRIPT
+    "tests/strategies/smart_sniper.py": SMART_SNIPER_CODE,
+    "run_phase6.py": RUN_PHASE6_SCRIPT
 }
 
 # ═══════════════════════════════════════════════════════════════
@@ -226,7 +256,7 @@ NEW_FILES = {
 # ═══════════════════════════════════════════════════════════════
 def main():
     print("\n" + "═" * 50)
-    print(f"🔧 BUILD Phase 5: Backtest Runner Engine")
+    print(f"🔧 BUILD Phase 6: Strategy Injection")
     print("═" * 50)
 
     try:
@@ -234,9 +264,9 @@ def main():
         print("\n[1/4] 📝 Writing Files...")
         
         # Ensure directory exists
-        runner_dir = os.path.join(ROOT, "tests", "runners")
-        if not os.path.exists(runner_dir):
-            os.makedirs(runner_dir)
+        strat_dir = os.path.join(ROOT, "tests", "strategies")
+        if not os.path.exists(strat_dir):
+            os.makedirs(strat_dir)
             
         for path, content in NEW_FILES.items():
             full = os.path.join(ROOT, path)
@@ -250,17 +280,17 @@ def main():
         context_gen.create_context_file()
 
         # 3. Run the Test
-        print("\n[3/4] 🏃 Running Phase 5 Test...")
-        result = subprocess.run([VENV_PYTHON, os.path.join(ROOT, "run_phase5.py")], cwd=ROOT)
+        print("\n[3/4] 🧠 Running Smart Sniper Simulation...")
+        result = subprocess.run([VENV_PYTHON, os.path.join(ROOT, "run_phase6.py")], cwd=ROOT)
         
         if result.returncode != 0:
-            raise Exception("Test Script Failed!")
+            raise Exception("Strategy Test Failed!")
 
         # 4. Git Sync
         print("\n[4/4] 🐙 Git Sync...")
         try:
             setup_git.setup()
-            setup_git.sync("Phase 5: Backtest Runner Engine")
+            setup_git.sync("Phase 6: Strategy Injection (Smart Sniper)")
             print("      ✅ Git Synced")
         except:
             print("      ⚠️ Git Warning (Ignored)")
@@ -270,7 +300,7 @@ def main():
 
     finally:
         # Cleanup
-        cleanup_path = os.path.join(ROOT, "run_phase5.py")
+        cleanup_path = os.path.join(ROOT, "run_phase6.py")
         if os.path.exists(cleanup_path):
             os.remove(cleanup_path)
 
