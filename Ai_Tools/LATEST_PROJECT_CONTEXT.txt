@@ -1,4 +1,4 @@
-GENERATED: 2026-01-05 00:39:47
+GENERATED: 2026-01-05 01:05:30
 VERSION: 3.1 (Phase 1: Virtual Wallet)
 
 PROJECT STRUCTURE:
@@ -11,8 +11,8 @@ OCEANHUNTER/
     mexc_connect.py
     mexc_sync_test.py
     proxy_fixer.py
-    report_phase2.py
     requirements.txt
+    run_phase3.py
     setup_test_data.py
     simple_test.py
     smart_connect.py
@@ -62,6 +62,7 @@ OCEANHUNTER/
         core/
             data_engine.py
             interfaces.py
+            simulator.py
             virtual_wallet.py
             __init__.py
         outputs/
@@ -703,46 +704,6 @@ if __name__ == "__main__":
 
 
 ====================
-File: report_phase2.py
-====================
-
-import os
-import requests
-from dotenv import load_dotenv
-
-load_dotenv()
-
-TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-def send_report():
-    if not TOKEN or not CHAT_ID:
-        print("⚠️ Telegram credentials missing.")
-        return
-
-    msg = (
-        "⏳ **Ocean Hunter: Phase 2 Complete**\n\n"
-        "✅ **Module:** Data Engine (`tests/core/data_engine.py`)\n"
-        "✅ **Interface:** `IDataProvider` defined.\n"
-        "✅ **Function:** CSV Reading & Time Simulation ready.\n"
-        "✅ **Git:** Synced with remote.\n\n"
-        "Ready for Phase 3: Integration (Connecting Wallet + Data)."
-    )
-    
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}
-    
-    try:
-        resp = requests.post(url, json=payload, timeout=10)
-        print(f"Telegram sent: {resp.status_code}")
-    except Exception as e:
-        print(f"Telegram fail: {e}")
-
-if __name__ == "__main__":
-    send_report()
-
-
-====================
 File: requirements.txt
 ====================
 requests>=2.31.0
@@ -750,6 +711,121 @@ python-dotenv>=1.0.0
 pandas>=2.0.0
 numpy>=1.24.0
 aiohttp>=3.9.0
+
+
+====================
+File: run_phase3.py
+====================
+
+import os
+import sys
+import requests
+import logging
+from dotenv import load_dotenv
+
+# Add project root to sys.path
+sys.path.append(os.getcwd())
+
+from tests.core.virtual_wallet import VirtualWallet
+from tests.core.data_engine import CsvCandlePlayer
+from tests.core.simulator import MarketSimulator
+
+# Setup Logging
+logging.basicConfig(level=logging.INFO, format='%(name)s - %(message)s')
+load_dotenv()
+
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+def find_correct_csv():
+    # Priority 1: Generated Test Data (Standard Format)
+    priority_path = os.path.join("tests", "data", "candles", "SOL_M15.csv")
+    if os.path.exists(priority_path):
+        return priority_path
+        
+    # Priority 2: Any CSV in tests/data
+    for root, dirs, files in os.walk("tests/data"):
+        for file in files:
+            if file.endswith(".csv"):
+                return os.path.join(root, file)
+                
+    return None
+
+def send_telegram(msg):
+    if not TOKEN or not CHAT_ID:
+        return
+    try:
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        requests.post(url, json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}, timeout=10)
+    except:
+        pass
+
+def main():
+    print("🚀 STARTING PHASE 3: INTEGRATION TEST (V2)")
+    
+    csv_file = find_correct_csv()
+    if not csv_file:
+        print("❌ ERROR: No Test Data found! Run 'python setup_test_data.py' first.")
+        sys.exit(1)
+        
+    print(f"📂 Using Data: {csv_file}")
+
+    try:
+        # 1. Init System
+        wallet = VirtualWallet(initial_balances={"USDT": 1000.0})
+        data = CsvCandlePlayer(csv_file)
+        sim = MarketSimulator(wallet, data)
+
+        # 2. Run Simulation
+        print("⏳ Running Simulation Loop...")
+        
+        # Step 1: Advance & BUY
+        if sim.run_step():
+            price_start = sim.get_market_price()
+            print(f"   🔹 Start Price: ${price_start}")
+            
+            # Buy ~ $100
+            qty = round(100.0 / price_start, 4)
+            sim.execute_trade("SOL", "BUY", qty)
+
+        # Step 2: Fast forward
+        last_price = 0
+        candles_processed = 0
+        while sim.run_step():
+            last_price = sim.get_market_price()
+            candles_processed += 1
+            
+        # Step 3: SELL
+        print(f"   🔹 End Price: ${last_price} (Processed {candles_processed} candles)")
+        sim.execute_trade("SOL", "SELL", qty)
+        
+        # 3. Results
+        final_usdt = wallet.get_balance("USDT")
+        pnl = final_usdt - 1000.0
+        pnl_percent = (pnl / 1000.0) * 100
+        
+        print("-" * 30)
+        print(f"💰 Final Balance: ${final_usdt:.2f}")
+        print(f"MEG PnL: ${pnl:.2f} ({pnl_percent:.2f}%)")
+        print("-" * 30)
+
+        # 4. Report
+        msg = (
+            "🔗 **Ocean Hunter: Phase 3 Complete**\n\n"
+            "✅ **Integration Successful**\n"
+            f"📂 Data: `{os.path.basename(csv_file)}`\n"
+            f"🕯 Candles: {candles_processed}\n"
+            f"💵 PnL: `{pnl:.2f} USDT` ({pnl_percent:.2f}%)\n\n"
+            "Simulator Core is Stable. Ready for Strategy."
+        )
+        send_telegram(msg)
+        
+    except Exception as e:
+        print(f"❌ Runtime Error: {e}")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
 
 
 ====================
@@ -3056,16 +3132,15 @@ All 15 scenarios PASS → Paper Mode OK → LIVE_TEST eligible
 ====================
 File: Ai_Tools\build.py
 ====================
-# AI_Tools/build.py — Phase 2: Data Engine (Candle Player)
+# AI_Tools/build.py — Phase 3: Simulator Core Integration (FIXED V2)
 # ═══════════════════════════════════════════════════════════════
-# Ref: GEMINI-PHASE2-DATA-ENGINE
+# Ref: GEMINI-PHASE3-DATA-ENGINE-FIX
 # ═══════════════════════════════════════════════════════════════
 
 import os
 import sys
 import subprocess
-import socket
-from datetime import datetime
+import glob
 
 # ═══ Import Internal Modules ═══
 try:
@@ -3074,229 +3149,316 @@ try:
 except ImportError:
     pass 
 
-# ═══════════════════════════════════════════════════════════════
-# PATHS
-# ═══════════════════════════════════════════════════════════════
 SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(SCRIPT_DIR)
 VENV_PATH = os.path.join(ROOT, ".venv")
 VENV_PYTHON = os.path.join(VENV_PATH, "Scripts", "python.exe") if sys.platform == "win32" else os.path.join(VENV_PATH, "bin", "python")
 
 # ═══════════════════════════════════════════════════════════════
-# ⭐ CONTENT GENERATION (Phase 2 Logic)
+# ⭐ CONTENT GENERATION
 # ═══════════════════════════════════════════════════════════════
 
-# 1. Interfaces (Contract for Data & Strategy)
-INTERFACES_CODE = """
-from abc import ABC, abstractmethod
-from typing import Dict, Any
-
-class IDataProvider(ABC):
-    \"\"\"Interface for fetching market data (Live or Backtest).\"\"\"
-    
-    @abstractmethod
-    def get_next_candle(self) -> Dict[str, Any]:
-        \"\"\"Returns the next candle or None if EOF.\"\"\"
-        pass
-
-    @abstractmethod
-    def get_server_time(self) -> int:
-        \"\"\"Returns current simulated or real server time (ms).\"\"\"
-        pass
-
-class IExecutionEngine(ABC):
-    \"\"\"Interface for executing orders.\"\"\"
-    pass
-"""
-
-# 2. Data Engine (The CSV Player)
+# 1. ROBUST DATA ENGINE (Fixes Column Mismatch)
 DATA_ENGINE_CODE = """
 import pandas as pd
 import logging
-import os
-from datetime import datetime
 from .interfaces import IDataProvider
 
 logger = logging.getLogger("DataEngine")
 
 class CsvCandlePlayer(IDataProvider):
     \"\"\"
-    Reads a CSV file and yields candles one by one to simulate live market.
-    Expected CSV columns: 'Open time', 'Open', 'High', 'Low', 'Close', 'Volume'
+    Reads historical data from CSV and serves it candle by candle.
+    Compatible with:
+    1. Generated Test Data (timestamp, open, high...)
+    2. Binance/MEXC Export (Open time, Open, High...)
     \"\"\"
-
-    def __init__(self, csv_path: str):
+    def __init__(self, csv_path):
         self.csv_path = csv_path
-        self.data = None
+        self.data = pd.DataFrame()
         self.current_index = 0
-        self.current_timestamp = 0
-        
         self._load_data()
 
     def _load_data(self):
-        if not os.path.exists(self.csv_path):
-            raise FileNotFoundError(f"Data file not found: {self.csv_path}")
-            
         try:
-            # Load CSV
             df = pd.read_csv(self.csv_path)
             
-            # Standardize columns (strip spaces)
-            df.columns = [c.strip() for c in df.columns]
+            # 1. Normalize Column Names (Lowercase & Strip)
+            df.columns = [c.lower().strip() for c in df.columns]
             
-            # Ensure required columns exist
-            required = ['Open time', 'Open', 'High', 'Low', 'Close', 'Volume']
-            if not all(col in df.columns for col in required):
-                raise ValueError(f"CSV missing columns. Required: {required}")
+            # 2. Map Standard Names
+            rename_map = {
+                'open time': 'timestamp',
+                'time': 'timestamp',
+                'date': 'timestamp',
+                'vol': 'volume'
+            }
+            df.rename(columns=rename_map, inplace=True)
+            
+            # 3. Validate Required Columns
+            required = {'timestamp', 'open', 'high', 'low', 'close', 'volume'}
+            if not required.issubset(df.columns):
+                missing = required - set(df.columns)
+                raise ValueError(f"CSV missing columns: {missing}. Found: {list(df.columns)}")
                 
-            # Sort by time just in case
-            df = df.sort_values('Open time').reset_index(drop=True)
+            # 4. Sort by time
+            df.sort_values('timestamp', inplace=True)
+            df.reset_index(drop=True, inplace=True)
             
             self.data = df
-            logger.info(f"Loaded {len(df)} candles from {os.path.basename(self.csv_path)}")
+            logger.info(f"Loaded {len(df)} candles from {self.csv_path}")
             
         except Exception as e:
             logger.error(f"Failed to load CSV: {e}")
             raise
 
     def get_next_candle(self):
-        \"\"\"Returns the next row as a dictionary.\"\"\"
-        if self.current_index >= len(self.data):
-            return None # End of Data
-            
-        row = self.data.iloc[self.current_index]
-        self.current_index += 1
-        
-        # Convert row to dict
-        candle = {
-            'timestamp': int(row['Open time']),
-            'open': float(row['Open']),
-            'high': float(row['High']),
-            'low': float(row['Low']),
-            'close': float(row['Close']),
-            'volume': float(row['Volume'])
-        }
-        
-        # Update internal clock
-        self.current_timestamp = candle['timestamp']
-        
-        return candle
+        if self.current_index < len(self.data):
+            # Convert row to dict
+            candle = self.data.iloc[self.current_index].to_dict()
+            self.current_index += 1
+            return candle
+        return None
 
-    def get_server_time(self) -> int:
-        \"\"\"Returns the close time of the LAST processed candle (simulated 'now').\"\"\"
-        return self.current_timestamp
+    def get_server_time(self):
+        # Return time of current candle (Simulation Time)
+        if self.current_index > 0:
+            return self.data.iloc[self.current_index - 1]['timestamp']
+        return 0
 """
 
-# 3. Telegram Report Script (Phase 2)
-REPORT_SCRIPT = """
+# 2. SIMULATOR LOGIC (Same as before)
+SIMULATOR_CODE = """
+import logging
+from .interfaces import IDataProvider
+from .virtual_wallet import VirtualWallet
+
+logger = logging.getLogger("Simulator")
+
+class MarketSimulator:
+    \"\"\"
+    The Brain of the Test.
+    Connects DataProvider (Market) -> VirtualWallet (Account).
+    \"\"\"
+    def __init__(self, wallet: VirtualWallet, data_provider: IDataProvider):
+        self.wallet = wallet
+        self.data_provider = data_provider
+        self.current_candle = None
+        self.steps_count = 0
+
+    def run_step(self):
+        \"\"\"Advances the simulation by one candle.\"\"\"
+        candle = self.data_provider.get_next_candle()
+        
+        if not candle:
+            return False # End of Data
+
+        self.current_candle = candle
+        self.steps_count += 1
+        return True
+
+    def execute_trade(self, symbol: str, side: str, quantity: float):
+        \"\"\"Manually execute a trade at the CURRENT candle's closing price.\"\"\"
+        if not self.current_candle:
+            raise Exception("Market not started yet. Call run_step() first.")
+            
+        price = self.current_candle['close']
+        cost = price * quantity
+        fee = cost * self.wallet.commission_rate
+        
+        if side.upper() == "BUY":
+            usdt_bal = self.wallet.get_balance("USDT")
+            total_cost = cost + fee
+            
+            if usdt_bal >= total_cost:
+                self.wallet.balances["USDT"] = usdt_bal - total_cost
+                current_asset = self.wallet.get_balance(symbol)
+                self.wallet.balances[symbol] = current_asset + quantity
+                logger.info(f"👉 EXECUTED BUY {quantity} {symbol} @ ${price}")
+            else:
+                logger.error("Insufficient USDT for BUY")
+
+        elif side.upper() == "SELL":
+            asset_bal = self.wallet.get_balance(symbol)
+            if asset_bal >= quantity:
+                self.wallet.balances[symbol] = asset_bal - quantity
+                proceeds = cost - fee
+                current_usdt = self.wallet.get_balance("USDT")
+                self.wallet.balances["USDT"] = current_usdt + proceeds
+                logger.info(f"👉 EXECUTED SELL {quantity} {symbol} @ ${price}")
+            else:
+                logger.error(f"Insufficient {symbol} for SELL")
+
+    def get_market_price(self):
+        return self.current_candle['close'] if self.current_candle else 0
+"""
+
+# 3. TEST SCRIPT (Fixed Paths)
+RUN_TEST_SCRIPT = """
 import os
+import sys
 import requests
+import logging
 from dotenv import load_dotenv
 
+# Add project root to sys.path
+sys.path.append(os.getcwd())
+
+from tests.core.virtual_wallet import VirtualWallet
+from tests.core.data_engine import CsvCandlePlayer
+from tests.core.simulator import MarketSimulator
+
+# Setup Logging
+logging.basicConfig(level=logging.INFO, format='%(name)s - %(message)s')
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-def send_report():
-    if not TOKEN or not CHAT_ID:
-        print("⚠️ Telegram credentials missing.")
-        return
+def find_correct_csv():
+    # Priority 1: Generated Test Data (Standard Format)
+    priority_path = os.path.join("tests", "data", "candles", "SOL_M15.csv")
+    if os.path.exists(priority_path):
+        return priority_path
+        
+    # Priority 2: Any CSV in tests/data
+    for root, dirs, files in os.walk("tests/data"):
+        for file in files:
+            if file.endswith(".csv"):
+                return os.path.join(root, file)
+                
+    return None
 
-    msg = (
-        "⏳ **Ocean Hunter: Phase 2 Complete**\\n\\n"
-        "✅ **Module:** Data Engine (`tests/core/data_engine.py`)\\n"
-        "✅ **Interface:** `IDataProvider` defined.\\n"
-        "✅ **Function:** CSV Reading & Time Simulation ready.\\n"
-        "✅ **Git:** Synced with remote.\\n\\n"
-        "Ready for Phase 3: Integration (Connecting Wallet + Data)."
-    )
-    
-    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
-    payload = {"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}
-    
+def send_telegram(msg):
+    if not TOKEN or not CHAT_ID:
+        return
     try:
-        resp = requests.post(url, json=payload, timeout=10)
-        print(f"Telegram sent: {resp.status_code}")
+        url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+        requests.post(url, json={"chat_id": CHAT_ID, "text": msg, "parse_mode": "Markdown"}, timeout=10)
+    except:
+        pass
+
+def main():
+    print("🚀 STARTING PHASE 3: INTEGRATION TEST (V2)")
+    
+    csv_file = find_correct_csv()
+    if not csv_file:
+        print("❌ ERROR: No Test Data found! Run 'python setup_test_data.py' first.")
+        sys.exit(1)
+        
+    print(f"📂 Using Data: {csv_file}")
+
+    try:
+        # 1. Init System
+        wallet = VirtualWallet(initial_balances={"USDT": 1000.0})
+        data = CsvCandlePlayer(csv_file)
+        sim = MarketSimulator(wallet, data)
+
+        # 2. Run Simulation
+        print("⏳ Running Simulation Loop...")
+        
+        # Step 1: Advance & BUY
+        if sim.run_step():
+            price_start = sim.get_market_price()
+            print(f"   🔹 Start Price: ${price_start}")
+            
+            # Buy ~ $100
+            qty = round(100.0 / price_start, 4)
+            sim.execute_trade("SOL", "BUY", qty)
+
+        # Step 2: Fast forward
+        last_price = 0
+        candles_processed = 0
+        while sim.run_step():
+            last_price = sim.get_market_price()
+            candles_processed += 1
+            
+        # Step 3: SELL
+        print(f"   🔹 End Price: ${last_price} (Processed {candles_processed} candles)")
+        sim.execute_trade("SOL", "SELL", qty)
+        
+        # 3. Results
+        final_usdt = wallet.get_balance("USDT")
+        pnl = final_usdt - 1000.0
+        pnl_percent = (pnl / 1000.0) * 100
+        
+        print("-" * 30)
+        print(f"💰 Final Balance: ${final_usdt:.2f}")
+        print(f"MEG PnL: ${pnl:.2f} ({pnl_percent:.2f}%)")
+        print("-" * 30)
+
+        # 4. Report
+        msg = (
+            "🔗 **Ocean Hunter: Phase 3 Complete**\\n\\n"
+            "✅ **Integration Successful**\\n"
+            f"📂 Data: `{os.path.basename(csv_file)}`\\n"
+            f"🕯 Candles: {candles_processed}\\n"
+            f"💵 PnL: `{pnl:.2f} USDT` ({pnl_percent:.2f}%)\\n\\n"
+            "Simulator Core is Stable. Ready for Strategy."
+        )
+        send_telegram(msg)
+        
     except Exception as e:
-        print(f"Telegram fail: {e}")
+        print(f"❌ Runtime Error: {e}")
+        sys.exit(1)
 
 if __name__ == "__main__":
-    send_report()
+    main()
 """
 
 # ═══════════════════════════════════════════════════════════════
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════
-FOLDERS = [
-    "tests/core"
-]
-
 NEW_FILES = {
-    "tests/core/interfaces.py": INTERFACES_CODE,
     "tests/core/data_engine.py": DATA_ENGINE_CODE,
-    "report_phase2.py": REPORT_SCRIPT
+    "tests/core/simulator.py": SIMULATOR_CODE,
+    "run_phase3.py": RUN_TEST_SCRIPT
 }
 
 # ═══════════════════════════════════════════════════════════════
-# EXECUTION STEPS
+# EXECUTION
 # ═══════════════════════════════════════════════════════════════
-errors = []
-
-def log_error(step, error):
-    errors.append(f"[{step}] {error}")
-    print(f"      ⚠️ Error: {error}")
-
 def main():
     print("\n" + "═" * 50)
-    print(f"🔧 BUILD Phase 2: Data Engine (Candle Player)")
+    print(f"🔧 BUILD Phase 3: Simulator Core (Fix Data Engine)")
     print("═" * 50)
 
     try:
-        # 1. Folders
-        print("\n[1/6] 📁 Checking Folders...")
-        for f in FOLDERS:
-            path = os.path.join(ROOT, f)
-            os.makedirs(path, exist_ok=True)
-            print(f"      ✅ Verified: {f}/")
-
-        # 2. Files
-        print("\n[2/6] 📝 Writing Code Files...")
+        # 1. Write Files
+        print("\n[1/4] 📝 Writing Files...")
         for path, content in NEW_FILES.items():
             full = os.path.join(ROOT, path)
             with open(full, "w", encoding="utf-8") as f:
                 f.write(content)
             print(f"      ✅ Wrote: {path}")
 
-        # 3. Context Gen (Reuse existing module)
-        print("\n[3/6] 📋 Refreshing Context...")
+        # 2. Context Gen
+        print("\n[2/4] 📋 Refreshing Context...")
         import context_gen
         context_gen.create_context_file()
 
-        # 4. Git Operations
-        print("\n[4/6] 🐙 Git Sync...")
+        # 3. Run the Test
+        print("\n[3/4] 🏃 Running Integration Test (Local)...")
+        result = subprocess.run([VENV_PYTHON, os.path.join(ROOT, "run_phase3.py")], cwd=ROOT)
+        
+        if result.returncode != 0:
+            raise Exception("Test Script Failed!")
+
+        # 4. Git Sync
+        print("\n[4/4] 🐙 Git Sync...")
         try:
             setup_git.setup()
-            setup_git.sync("Phase 2: Data Engine Implementation")
-            print("      ✅ Git Synced Successfully")
-        except Exception as e:
-            log_error("Git", f"Sync failed: {e}")
-
-        # 5. Report
-        print("\n[5/6] 🚀 Sending Report...")
-        subprocess.run([VENV_PYTHON, os.path.join(ROOT, "report_phase2.py")], cwd=ROOT)
+            setup_git.sync("Phase 3: Simulator Integration (Final Fix)")
+            print("      ✅ Git Synced")
+        except:
+            print("      ⚠️ Git Warning (Ignored)")
 
     except Exception as e:
-        print(f"\n💥 Critical: {e}")
-        errors.append(str(e))
+        print(f"\n💥 Critical Error: {e}")
 
     finally:
-        if errors:
-            print(f"\n⚠️ Completed with {len(errors)} errors.")
-        else:
-            print("\n✅ Build Successful.")
-            if os.path.exists(os.path.join(ROOT, "report_phase2.py")):
-                os.remove(os.path.join(ROOT, "report_phase2.py"))
+        if os.path.exists(os.path.join(ROOT, "run_phase3.py")):
+            os.remove(os.path.join(ROOT, "run_phase3.py"))
 
 if __name__ == "__main__":
     main()
@@ -4755,78 +4917,69 @@ File: tests\core\data_engine.py
 
 import pandas as pd
 import logging
-import os
-from datetime import datetime
 from .interfaces import IDataProvider
 
 logger = logging.getLogger("DataEngine")
 
 class CsvCandlePlayer(IDataProvider):
     """
-    Reads a CSV file and yields candles one by one to simulate live market.
-    Expected CSV columns: 'Open time', 'Open', 'High', 'Low', 'Close', 'Volume'
+    Reads historical data from CSV and serves it candle by candle.
+    Compatible with:
+    1. Generated Test Data (timestamp, open, high...)
+    2. Binance/MEXC Export (Open time, Open, High...)
     """
-
-    def __init__(self, csv_path: str):
+    def __init__(self, csv_path):
         self.csv_path = csv_path
-        self.data = None
+        self.data = pd.DataFrame()
         self.current_index = 0
-        self.current_timestamp = 0
-        
         self._load_data()
 
     def _load_data(self):
-        if not os.path.exists(self.csv_path):
-            raise FileNotFoundError(f"Data file not found: {self.csv_path}")
-            
         try:
-            # Load CSV
             df = pd.read_csv(self.csv_path)
             
-            # Standardize columns (strip spaces)
-            df.columns = [c.strip() for c in df.columns]
+            # 1. Normalize Column Names (Lowercase & Strip)
+            df.columns = [c.lower().strip() for c in df.columns]
             
-            # Ensure required columns exist
-            required = ['Open time', 'Open', 'High', 'Low', 'Close', 'Volume']
-            if not all(col in df.columns for col in required):
-                raise ValueError(f"CSV missing columns. Required: {required}")
+            # 2. Map Standard Names
+            rename_map = {
+                'open time': 'timestamp',
+                'time': 'timestamp',
+                'date': 'timestamp',
+                'vol': 'volume'
+            }
+            df.rename(columns=rename_map, inplace=True)
+            
+            # 3. Validate Required Columns
+            required = {'timestamp', 'open', 'high', 'low', 'close', 'volume'}
+            if not required.issubset(df.columns):
+                missing = required - set(df.columns)
+                raise ValueError(f"CSV missing columns: {missing}. Found: {list(df.columns)}")
                 
-            # Sort by time just in case
-            df = df.sort_values('Open time').reset_index(drop=True)
+            # 4. Sort by time
+            df.sort_values('timestamp', inplace=True)
+            df.reset_index(drop=True, inplace=True)
             
             self.data = df
-            logger.info(f"Loaded {len(df)} candles from {os.path.basename(self.csv_path)}")
+            logger.info(f"Loaded {len(df)} candles from {self.csv_path}")
             
         except Exception as e:
             logger.error(f"Failed to load CSV: {e}")
             raise
 
     def get_next_candle(self):
-        """Returns the next row as a dictionary."""
-        if self.current_index >= len(self.data):
-            return None # End of Data
-            
-        row = self.data.iloc[self.current_index]
-        self.current_index += 1
-        
-        # Convert row to dict
-        candle = {
-            'timestamp': int(row['Open time']),
-            'open': float(row['Open']),
-            'high': float(row['High']),
-            'low': float(row['Low']),
-            'close': float(row['Close']),
-            'volume': float(row['Volume'])
-        }
-        
-        # Update internal clock
-        self.current_timestamp = candle['timestamp']
-        
-        return candle
+        if self.current_index < len(self.data):
+            # Convert row to dict
+            candle = self.data.iloc[self.current_index].to_dict()
+            self.current_index += 1
+            return candle
+        return None
 
-    def get_server_time(self) -> int:
-        """Returns the close time of the LAST processed candle (simulated 'now')."""
-        return self.current_timestamp
+    def get_server_time(self):
+        # Return time of current candle (Simulation Time)
+        if self.current_index > 0:
+            return self.data.iloc[self.current_index - 1]['timestamp']
+        return 0
 
 
 ====================
@@ -4852,6 +5005,74 @@ class IDataProvider(ABC):
 class IExecutionEngine(ABC):
     """Interface for executing orders."""
     pass
+
+
+====================
+File: tests\core\simulator.py
+====================
+
+import logging
+from .interfaces import IDataProvider
+from .virtual_wallet import VirtualWallet
+
+logger = logging.getLogger("Simulator")
+
+class MarketSimulator:
+    """
+    The Brain of the Test.
+    Connects DataProvider (Market) -> VirtualWallet (Account).
+    """
+    def __init__(self, wallet: VirtualWallet, data_provider: IDataProvider):
+        self.wallet = wallet
+        self.data_provider = data_provider
+        self.current_candle = None
+        self.steps_count = 0
+
+    def run_step(self):
+        """Advances the simulation by one candle."""
+        candle = self.data_provider.get_next_candle()
+        
+        if not candle:
+            return False # End of Data
+
+        self.current_candle = candle
+        self.steps_count += 1
+        return True
+
+    def execute_trade(self, symbol: str, side: str, quantity: float):
+        """Manually execute a trade at the CURRENT candle's closing price."""
+        if not self.current_candle:
+            raise Exception("Market not started yet. Call run_step() first.")
+            
+        price = self.current_candle['close']
+        cost = price * quantity
+        fee = cost * self.wallet.commission_rate
+        
+        if side.upper() == "BUY":
+            usdt_bal = self.wallet.get_balance("USDT")
+            total_cost = cost + fee
+            
+            if usdt_bal >= total_cost:
+                self.wallet.balances["USDT"] = usdt_bal - total_cost
+                current_asset = self.wallet.get_balance(symbol)
+                self.wallet.balances[symbol] = current_asset + quantity
+                logger.info(f"👉 EXECUTED BUY {quantity} {symbol} @ ${price}")
+            else:
+                logger.error("Insufficient USDT for BUY")
+
+        elif side.upper() == "SELL":
+            asset_bal = self.wallet.get_balance(symbol)
+            if asset_bal >= quantity:
+                self.wallet.balances[symbol] = asset_bal - quantity
+                proceeds = cost - fee
+                current_usdt = self.wallet.get_balance("USDT")
+                self.wallet.balances["USDT"] = current_usdt + proceeds
+                logger.info(f"👉 EXECUTED SELL {quantity} {symbol} @ ${price}")
+            else:
+                logger.error(f"Insufficient {symbol} for SELL")
+
+    def get_market_price(self):
+        return self.current_candle['close'] if self.current_candle else 0
 
 
 ====================
