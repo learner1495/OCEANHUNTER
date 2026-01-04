@@ -1068,4 +1068,389 @@ Status:
 ================================================================================
 ARCHITECTURE REFERENCE CODE:
 REF-ARCH-V10.8.2-FINAL-LOCK-610
-================================================================================
+===================================================================================== SECTION 17 — TEST FRAMEWORK ARCHITECTURE [V10.8.2]
+[17.1] FRAMEWORK OVERVIEW:
+
+Scenarios (JSON) ──┐
+
+Candles (CSV) ─────┼──▶ TestSimulatorProvider ──▶ Engine ──▶ Reporter
+
+OrderBooks (JSON) ─┤
+
+Wallets (JSON) ────┘
+
+Config Switch: DATA_MODE = “LIVE” | “TEST”
+
+[17.2] DATA PROVIDER INTERFACE (IDataProvider):
+
+Methods:
+
+get_candles(symbol, timeframe, count) → List[Candle]
+
+get_orderbook(symbol) → OrderBook
+
+get_balance(asset) → Balance
+
+get_all_balances() → Dict[str, Balance]
+
+place_order(symbol, side, amount, order_type, price) → OrderResult
+
+cancel_order(order_id) → bool
+
+get_ticker(symbol) → Ticker
+
+Implementations:
+
+NobitexLiveProvider (modules/network/nobitex.py)
+
+Data Source: Nobitex REST API
+Orders: Real execution
+Used When: DATA_MODE = “LIVE”
+TestSimulatorProvider (tests/providers/test_provider.py)
+
+Data Source: CSV + JSON files
+Orders: Virtual wallet update
+Used When: DATA_MODE = “TEST”
+[17.3] TEST CONFIGURATION (config.py):
+
+DATA_MODE = “LIVE”
+
+TEST_CONFIG = {
+
+“scenario_file”: “SC-001-basic-entry-exit.json”,
+
+“candle_speed”: “INSTANT”,
+
+“enable_logging”: True,
+
+“output_format”: [“JSON”, “EXCEL”],
+
+“telegram_report”: True
+
+}
+
+Candle Speed Options:
+
+INSTANT = Process all candles immediately (batch test)
+
+FAST = 1 second per candle (visual debugging)
+
+REALTIME = 15 minutes per M15 candle (realistic simulation)
+
+[17.4] DIRECTORY STRUCTURE:
+
+tests/
+
+├── init.py
+
+├── conftest.py
+
+├── run_tests.py
+
+├── data/
+
+│ ├── candles/
+
+│ │ ├── SOL_M15.csv, SOL_1H.csv
+
+│ │ ├── BNB_M15.csv, BNB_1H.csv
+
+│ │ ├── XRP_M15.csv, XRP_1H.csv
+
+│ │ ├── AVAX_M15.csv, AVAX_1H.csv
+
+│ │ ├── LINK_M15.csv, LINK_1H.csv
+
+│ │ ├── BTC_1H.csv, PAXG_1H.csv
+
+│ ├── orderbooks/
+
+│ │ ├── SOL.json, BNB.json, XRP.json, AVAX.json, LINK.json
+
+│ ├── scenarios/
+
+│ │ ├── SC-001 to SC-015 (see 17.7)
+
+│ └── wallets/
+
+│ └── initial_wallet_v10.8.2.json
+
+├── providers/
+
+│ ├── init.py
+
+│ ├── test_provider.py
+
+│ ├── virtual_wallet.py
+
+│ ├── candle_player.py
+
+│ └── order_simulator.py
+
+├── runners/
+
+│ ├── init.py
+
+│ ├── scenario_runner.py
+
+│ ├── batch_runner.py
+
+│ └── interactive_runner.py
+
+├── reporters/
+
+│ ├── init.py
+
+│ ├── json_reporter.py
+
+│ ├── excel_reporter.py
+
+│ └── telegram_reporter.py
+
+└── outputs/
+
+└── .gitkeep
+
+[17.5] VIRTUAL WALLET SYSTEM:
+
+Purpose: Track simulated balances during test scenarios
+
+Initialization: Load from tests/data/wallets/initial_wallet_v10.8.2.json
+
+State Structure:
+
+{
+
+“USDT”: {“available”: 400, “locked”: 0},
+
+“SOL”: {“available”: 0, “locked”: 0, “avg_price”: 0},
+
+“BNB”: {“available”: 0, “locked”: 0, “avg_price”: 0},
+
+“XRP”: {“available”: 0, “locked”: 0, “avg_price”: 0},
+
+“AVAX”: {“available”: 0, “locked”: 0, “avg_price”: 0},
+
+“LINK”: {“available”: 0, “locked”: 0, “avg_price”: 0},
+
+“BTC”: {“available”: 0.005, “locked”: 0, “avg_price”: 42000},
+
+“PAXG”: {“available”: 0.08, “locked”: 0, “avg_price”: 2500}
+
+}
+
+Operations:
+
+BUY(symbol, amount_usdt, price):
+
+Check USDT available >= amount_usdt
+Calculate quantity = amount_usdt / price
+Apply fee (0.35%)
+Deduct USDT
+Add to symbol balance
+Update avg_price (weighted average)
+SELL(symbol, quantity, price):
+
+Check symbol available >= quantity
+Calculate received_usdt = quantity * price
+Apply fee (0.35%)
+Deduct from symbol
+Add to USDT balance
+[17.6] SCENARIO FILE FORMAT:
+
+{
+
+“scenario_id”: “SC-001”,
+
+“name”: “Basic Entry and Exit”,
+
+“description”: “Test entry at score 75, exit at 2% profit”,
+
+“duration_candles”: 100,
+
+“initial_wallet”: “initial_wallet_v10.8.2.json”,
+
+“candle_files”: {“SOL”: “SOL_M15.csv”, “BTC”: “BTC_1H.csv”},
+
+“orderbook_files”: {“SOL”: “SOL.json”},
+
+“expected_results”: {
+
+“total_trades”: 1,
+
+“winning_trades”: 1,
+
+“final_usdt_min”: 400,
+
+“btc_vault_increased”: true
+
+},
+
+“assertions”: [
+
+{“type”: “entry_triggered”, “symbol”: “SOL”, “candle_index”: 15},
+
+{“type”: “exit_triggered”, “symbol”: “SOL”, “candle_index”: 45},
+
+{“type”: “profit_routed”, “destination”: “BTC”}
+
+]
+
+}
+
+[17.7] TEST SCENARIOS (15 CORE):
+
+SC-001: Basic Entry/Exit (score threshold + take profit)
+
+SC-002: DCA Layer 1 (-3% trigger)
+
+SC-003: DCA Layer 2 (-6% trigger)
+
+SC-004: DCA Layer 3 (-10% trigger)
+
+SC-005: Emergency Refuel (PAXG in profit)
+
+SC-006: WAIT MODE (PAXG in loss)
+
+SC-007: Trailing Exit (activate after +1%)
+
+SC-008: BTC Strong (80/20 split)
+
+SC-009: BTC Weak (20/80 split + entry block)
+
+SC-010: Global Stop (BTC -8% in 4h)
+
+SC-011: Spread Filter (>0.5% rejection)
+
+SC-012: Wick Filter (wick > 3x body)
+
+SC-013: Volume Sanity (>10x avg rejection)
+
+SC-014: Queue Full (3 positions + queue)
+
+SC-015: Max Positions (limit enforcement)
+
+[17.8] CANDLE CSV FORMAT:
+
+timestamp,open,high,low,close,volume,scenario_tag
+
+1704067200,100.5,102.3,99.8,101.2,15000,ENTRY_SIGNAL
+
+1704068100,101.2,103.5,100.9,102.8,18000,NORMAL
+
+1704069000,102.8,103.0,98.5,99.2,25000,DCA_L1
+
+Scenario Tags:
+
+ENTRY_SIGNAL, DCA_L1, DCA_L2, DCA_L3, EXIT_PROFIT
+
+EXIT_TRAILING, REFUEL_TRIGGER, WAIT_MODE, NORMAL
+
+[17.9] ORDERBOOK JSON FORMAT:
+
+{
+
+“symbol”: “SOL”,
+
+“timestamp”: 1704067200,
+
+“bids”: [[100.5, 150], [100.4, 200], …],
+
+“asks”: [[100.6, 120], [100.7, 180], …],
+
+“spread_percent”: 0.001,
+
+“obi”: 0.15
+
+}
+
+[17.10] TEST REPORTER OUTPUT:
+
+JSON (tests/outputs/report_SC-001_YYYYMMDD_HHMM.json):
+
+{
+
+“scenario_id”: “SC-001”,
+
+“status”: “PASS”,
+
+“duration_seconds”: 2.5,
+
+“trades_executed”: 1,
+
+“assertions_passed”: 3,
+
+“assertions_failed”: 0,
+
+“final_wallet”: {…},
+
+“trade_log”: […]
+
+}
+
+Excel (tests/outputs/report_SC-001_YYYYMMDD_HHMM.xlsx):
+
+Sheet 1: Summary (Pass/Fail, Duration, Stats)
+
+Sheet 2: Trade Log (All executed trades)
+
+Sheet 3: Wallet History (Balance changes over time)
+
+Sheet 4: Assertion Results (Each assertion detail)
+
+Telegram Summary:
+
+✅ Test Report: SC-001
+
+Status: PASS | Trades: 1 | Win Rate: 100%
+
+Assertions: 3/3 passed | Duration: 2.5s
+
+[17.11] BATCH EXECUTION:
+
+Command: python tests/run_tests.py --all
+
+Process:
+
+Load all scenarios from tests/data/scenarios/
+Execute each scenario sequentially
+Collect results
+Generate combined report
+Send summary to Telegram
+Combined Report:
+
+{
+
+“total_scenarios”: 15,
+
+“passed”: 14,
+
+“failed”: 1,
+
+“failed_scenarios”: [“SC-012-wick-filter”],
+
+“total_duration”: 45.2,
+
+“timestamp”: “2026-01-04T12:00:00Z”
+
+}
+
+[17.12] INTEGRATION WITH SECTION 15:
+
+Unit Tests (Section 15.1):
+
+Use TestSimulatorProvider for isolated module testing
+Mock specific scenarios per module
+Integration Tests (Section 15.2):
+
+Run full scenarios (SC-001 to SC-015)
+Validate complete trade lifecycle
+Paper Trading (Section 15.3):
+
+Extended scenario runs (72h equivalent data)
+Must pass all 15 scenarios before LIVE_TEST
+Progression Gate:
+
+All 15 scenarios PASS → Paper Mode OK → LIVE_TEST eligible
+
+================================================================================ END OF SECTION 17 — TEST FRAMEWORK

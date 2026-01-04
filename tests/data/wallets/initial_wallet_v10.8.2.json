@@ -1,0 +1,51 @@
+{
+  "version": "V10.8.2",
+  "created": "2026-01-04",
+  "description": "Initial wallet state for testing",
+  "balances": {
+    "USDT": {
+      "available": 400.0,
+      "locked": 0.0
+    },
+    "SOL": {
+      "available": 0.0,
+      "locked": 0.0,
+      "avg_price": 0.0
+    },
+    "BNB": {
+      "available": 0.0,
+      "locked": 0.0,
+      "avg_price": 0.0
+    },
+    "XRP": {
+      "available": 0.0,
+      "locked": 0.0,
+      "avg_price": 0.0
+    },
+    "AVAX": {
+      "available": 0.0,
+      "locked": 0.0,
+      "avg_price": 0.0
+    },
+    "LINK": {
+      "available": 0.0,
+      "locked": 0.0,
+      "avg_price": 0.0
+    },
+    "BTC": {
+      "available": 0.005,
+      "locked": 0.0,
+      "avg_price": 42000.0
+    },
+    "PAXG": {
+      "available": 0.08,
+      "locked": 0.0,
+      "avg_price": 2500.0
+    }
+  },
+  "settings": {
+    "fee_rate": 0.0035,
+    "max_positions": 3,
+    "position_size_usdt": 100.0
+  }
+}

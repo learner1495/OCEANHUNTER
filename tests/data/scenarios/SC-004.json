@@ -1,0 +1,33 @@
+{
+  "scenario_id": "SC-004",
+  "name": "Auto Generated Scenario 4",
+  "description": "Generated for full test framework coverage",
+  "duration_candles": 100,
+  "initial_wallet": "initial_wallet_v10.8.2.json",
+  "candle_files": {
+    "SOL": "SOL_M15.csv",
+    "BNB": "BNB_M15.csv",
+    "BTC": "BTC_1H.csv"
+  },
+  "orderbook_files": {
+    "SOL": "SOL.json"
+  },
+  "expected_results": {
+    "total_trades": 2,
+    "winning_trades": 1,
+    "final_usdt_min": 380,
+    "btc_vault_increased": true
+  },
+  "assertions": [
+    {
+      "type": "entry_triggered",
+      "symbol": "SOL",
+      "candle_index": 15
+    },
+    {
+      "type": "exit_triggered",
+      "symbol": "SOL",
+      "min_profit_pct": 2
+    }
+  ]
+}
