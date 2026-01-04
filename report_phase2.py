@@ -14,13 +14,12 @@ def send_report():
         return
 
     msg = (
-        "🏗 **Ocean Hunter: Phase 1 Complete**\n\n"
-        "✅ **Module:** Virtual Wallet (`tests/core/virtual_wallet.py`)\n"
-        "✅ **Config:** MEXC Mode (Fee: 0.1%)\n"
-        "✅ **Data Safety:** Existing test data preserved.\n"
-        "✅ **Git:** Synced with remote.\n"
-        "✅ **Context:** Updated to include test architecture.\n\n"
-        "Ready for Phase 2: Data Provider Implementation."
+        "⏳ **Ocean Hunter: Phase 2 Complete**\n\n"
+        "✅ **Module:** Data Engine (`tests/core/data_engine.py`)\n"
+        "✅ **Interface:** `IDataProvider` defined.\n"
+        "✅ **Function:** CSV Reading & Time Simulation ready.\n"
+        "✅ **Git:** Synced with remote.\n\n"
+        "Ready for Phase 3: Integration (Connecting Wallet + Data)."
     )
     
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"

@@ -1,6 +1,6 @@
-# AI_Tools/build.py — Phase 1: Virtual Wallet (MEXC Edition) + Git Sync
+# AI_Tools/build.py — Phase 2: Data Engine (Candle Player)
 # ═══════════════════════════════════════════════════════════════
-# Ref: GEMINI-PHASE1-MEXC-FIX-GIT
+# Ref: GEMINI-PHASE2-DATA-ENGINE
 # ═══════════════════════════════════════════════════════════════
 
 import os
@@ -25,210 +25,111 @@ VENV_PATH = os.path.join(ROOT, ".venv")
 VENV_PYTHON = os.path.join(VENV_PATH, "Scripts", "python.exe") if sys.platform == "win32" else os.path.join(VENV_PATH, "bin", "python")
 
 # ═══════════════════════════════════════════════════════════════
-# ⭐ CONTENT GENERATION
+# ⭐ CONTENT GENERATION (Phase 2 Logic)
 # ═══════════════════════════════════════════════════════════════
 
-# 1. Virtual Wallet Code (MEXC 0.1% Fee)
-VIRTUAL_WALLET_CODE = """
+# 1. Interfaces (Contract for Data & Strategy)
+INTERFACES_CODE = """
+from abc import ABC, abstractmethod
+from typing import Dict, Any
+
+class IDataProvider(ABC):
+    \"\"\"Interface for fetching market data (Live or Backtest).\"\"\"
+    
+    @abstractmethod
+    def get_next_candle(self) -> Dict[str, Any]:
+        \"\"\"Returns the next candle or None if EOF.\"\"\"
+        pass
+
+    @abstractmethod
+    def get_server_time(self) -> int:
+        \"\"\"Returns current simulated or real server time (ms).\"\"\"
+        pass
+
+class IExecutionEngine(ABC):
+    \"\"\"Interface for executing orders.\"\"\"
+    pass
+"""
+
+# 2. Data Engine (The CSV Player)
+DATA_ENGINE_CODE = """
+import pandas as pd
 import logging
-from typing import Dict, Optional
-
-# Configure logging
-logger = logging.getLogger("VirtualWallet")
-
-class VirtualWallet:
-    \"\"\"
-    Simulates a crypto exchange wallet with locking mechanism and fees.
-    
-    EXCHANGE: MEXC Global
-    FEE STRUCTURE: 0.1% (0.001) for Maker/Taker (Standard Spot)
-    \"\"\"
-    
-    def __init__(self, initial_balances: Dict[str, float] = None, commission_rate: float = 0.001):
-        # Default commission_rate set to 0.001 (0.1%) for MEXC
-        self.balances = initial_balances if initial_balances else {}  # Available funds
-        self.locked = {}  # Funds locked in open orders
-        self.commission_rate = commission_rate
-        self.history = [] # Transaction history log
-
-    def get_balance(self, asset: str) -> float:
-        \"\"\"Returns AVAILABLE balance (not including locked).\"\"\"
-        return self.balances.get(asset, 0.0)
-
-    def get_total_balance(self, asset: str) -> float:
-        \"\"\"Returns Total balance (Available + Locked).\"\"\"
-        return self.balances.get(asset, 0.0) + self.locked.get(asset, 0.0)
-
-    def lock_funds(self, asset: str, amount: float) -> bool:
-        \"\"\"Locks funds for an order. Returns True if successful.\"\"\"
-        if amount <= 0:
-            return False
-            
-        available = self.balances.get(asset, 0.0)
-        # Using a small epsilon for float comparison safety
-        if available >= amount:
-            self.balances[asset] = available - amount
-            self.locked[asset] = self.locked.get(asset, 0.0) + amount
-            return True
-        else:
-            logger.warning(f"Insufficient funds to lock {amount} {asset}. Available: {available}")
-            return False
-
-    def unlock_funds(self, asset: str, amount: float):
-        \"\"\"Unlocks funds (e.g., cancelled order).\"\"\"
-        locked_amount = self.locked.get(asset, 0.0)
-        if locked_amount >= amount:
-            self.locked[asset] = locked_amount - amount
-            self.balances[asset] = self.balances.get(asset, 0.0) + amount
-        else:
-            logger.error(f"Attempted to unlock {amount} {asset} but only {locked_amount} is locked.")
-            # Recover as much as possible
-            self.balances[asset] = self.balances.get(asset, 0.0) + locked_amount
-            self.locked[asset] = 0
-
-    def apply_trade(self, side: str, base_asset: str, quote_asset: str, 
-                   amount: float, price: float, is_maker: bool = False):
-        \"\"\"
-        Executes a trade and updates balances.
-        side: 'BUY' or 'SELL'
-        amount: Amount of Base Asset (e.g., BTC)
-        price: Price in Quote Asset (e.g., USDT)
-        \"\"\"
-        cost = amount * price
-        fee_rate = self.commission_rate 
-        
-        if side == 'BUY':
-            # Buyer pays Quote (USDT), receives Base (BTC)
-            # Funds were already locked in Quote (USDT)
-            
-            # 1. Deduct cost from locked Quote
-            current_locked = self.locked.get(quote_asset, 0.0)
-            if current_locked >= cost:
-                self.locked[quote_asset] = current_locked - cost
-            else:
-                # Fallback correction
-                remaining = cost - current_locked
-                if self.balances.get(quote_asset, 0) >= remaining:
-                    self.balances[quote_asset] -= remaining
-                self.locked[quote_asset] = 0
-                
-            # 2. Add Base (BTC) - Fee is deducted from received asset on MEXC
-            gross_receive = amount
-            fee = gross_receive * fee_rate
-            net_receive = gross_receive - fee
-            
-            self.balances[base_asset] = self.balances.get(base_asset, 0.0) + net_receive
-            
-            self._log_trade(side, base_asset, quote_asset, amount, price, fee, fee_asset=base_asset)
-            
-        elif side == 'SELL':
-            # Seller pays Base (BTC), receives Quote (USDT)
-            # Funds (BTC) were locked
-            
-            # 1. Deduct Base from locked
-            current_locked = self.locked.get(base_asset, 0.0)
-            if current_locked >= amount:
-                self.locked[base_asset] = current_locked - amount
-            else:
-                 remaining = amount - current_locked
-                 if self.balances.get(base_asset, 0) >= remaining:
-                     self.balances[base_asset] -= remaining
-                 self.locked[base_asset] = 0
-                 
-            # 2. Add Quote (USDT) - Fee deducted from USDT received
-            gross_receive = cost
-            fee = gross_receive * fee_rate
-            net_receive = gross_receive - fee
-            
-            self.balances[quote_asset] = self.balances.get(quote_asset, 0.0) + net_receive
-            
-            self._log_trade(side, base_asset, quote_asset, amount, price, fee, fee_asset=quote_asset)
-
-    def _log_trade(self, side, base, quote, amount, price, fee, fee_asset):
-        self.history.append({
-            "side": side,
-            "pair": f"{base}{quote}",
-            "amount": amount,
-            "price": price,
-            "fee": fee,
-            "fee_asset": fee_asset,
-            "timestamp": "SIMULATED" 
-        })
-"""
-
-# 2. Updated Context Gen (Scanning 'tests' folder)
-CONTEXT_GEN_CODE = """
 import os
-import datetime
+from datetime import datetime
+from .interfaces import IDataProvider
 
-# CONFIG
-OUTPUT_FILE = "LATEST_PROJECT_CONTEXT.txt"
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-ROOT_DIR = os.path.dirname(SCRIPT_DIR)
+logger = logging.getLogger("DataEngine")
 
-# Folders to scan
-INCLUDE_DIRS = ['AI_Tools', 'modules', 'tests'] 
-EXCLUDE_DIRS = ['.git', '.venv', '__pycache__', 'context_backups', 'data', 'logs', 'candles', 'wallets', 'orderbooks']
-# Note: We exclude raw data folders inside 'tests' from context to keep context small, 
-# but include 'tests/core', 'tests/runners' etc.
+class CsvCandlePlayer(IDataProvider):
+    \"\"\"
+    Reads a CSV file and yields candles one by one to simulate live market.
+    Expected CSV columns: 'Open time', 'Open', 'High', 'Low', 'Close', 'Volume'
+    \"\"\"
 
-EXTENSIONS = ['.py', '.txt', '.md', '.json', '.env']
+    def __init__(self, csv_path: str):
+        self.csv_path = csv_path
+        self.data = None
+        self.current_index = 0
+        self.current_timestamp = 0
+        
+        self._load_data()
 
-def get_tree(startpath):
-    tree = ""
-    for root, dirs, files in os.walk(startpath):
-        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
-        level = root.replace(startpath, '').count(os.sep)
-        indent = ' ' * 4 * (level)
-        tree += f"{indent}{os.path.basename(root)}/\\n"
-        subindent = ' ' * 4 * (level + 1)
-        for f in files:
-            if any(f.endswith(ext) for ext in EXTENSIONS):
-                tree += f"{subindent}{f}\\n"
-    return tree
-
-def read_files(startpath):
-    content = ""
-    for root, dirs, files in os.walk(startpath):
-        dirs[:] = [d for d in dirs if d not in EXCLUDE_DIRS]
-        for f in files:
-            # Skip large data files even if json/txt
-            if "LATEST_PROJECT_CONTEXT" in f: continue
+    def _load_data(self):
+        if not os.path.exists(self.csv_path):
+            raise FileNotFoundError(f"Data file not found: {self.csv_path}")
             
-            if any(f.endswith(ext) for ext in EXTENSIONS):
-                path = os.path.join(root, f)
-                rel_path = os.path.relpath(path, startpath)
+        try:
+            # Load CSV
+            df = pd.read_csv(self.csv_path)
+            
+            # Standardize columns (strip spaces)
+            df.columns = [c.strip() for c in df.columns]
+            
+            # Ensure required columns exist
+            required = ['Open time', 'Open', 'High', 'Low', 'Close', 'Volume']
+            if not all(col in df.columns for col in required):
+                raise ValueError(f"CSV missing columns. Required: {required}")
                 
-                try:
-                    with open(path, 'r', encoding='utf-8') as file:
-                        content += f"\\n{'='*20}\\nFile: {rel_path}\\n{'='*20}\\n"
-                        content += file.read() + "\\n"
-                except Exception as e:
-                    content += f"\\nError reading {rel_path}: {e}\\n"
-    return content
+            # Sort by time just in case
+            df = df.sort_values('Open time').reset_index(drop=True)
+            
+            self.data = df
+            logger.info(f"Loaded {len(df)} candles from {os.path.basename(self.csv_path)}")
+            
+        except Exception as e:
+            logger.error(f"Failed to load CSV: {e}")
+            raise
 
-def create_context_file():
-    timestamp = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    
-    header = f"GENERATED: {timestamp}\\n"
-    header += f"VERSION: 3.1 (Phase 1: Virtual Wallet)\\n\\n"
-    
-    structure = "PROJECT STRUCTURE:\\n" + get_tree(ROOT_DIR)
-    file_contents = "\\nFILE CONTENTS:\\n" + read_files(ROOT_DIR)
-    
-    full_content = header + structure + file_contents
-    
-    output_path = os.path.join(SCRIPT_DIR, OUTPUT_FILE)
-    with open(output_path, 'w', encoding='utf-8') as f:
-        f.write(full_content)
-    
-    print(f"✅ Context generated at: {output_path}")
+    def get_next_candle(self):
+        \"\"\"Returns the next row as a dictionary.\"\"\"
+        if self.current_index >= len(self.data):
+            return None # End of Data
+            
+        row = self.data.iloc[self.current_index]
+        self.current_index += 1
+        
+        # Convert row to dict
+        candle = {
+            'timestamp': int(row['Open time']),
+            'open': float(row['Open']),
+            'high': float(row['High']),
+            'low': float(row['Low']),
+            'close': float(row['Close']),
+            'volume': float(row['Volume'])
+        }
+        
+        # Update internal clock
+        self.current_timestamp = candle['timestamp']
+        
+        return candle
 
-if __name__ == "__main__":
-    create_context_file()
+    def get_server_time(self) -> int:
+        \"\"\"Returns the close time of the LAST processed candle (simulated 'now').\"\"\"
+        return self.current_timestamp
 """
 
-# 3. Telegram Report Script
+# 3. Telegram Report Script (Phase 2)
 REPORT_SCRIPT = """
 import os
 import requests
@@ -245,13 +146,12 @@ def send_report():
         return
 
     msg = (
-        "🏗 **Ocean Hunter: Phase 1 Complete**\\n\\n"
-        "✅ **Module:** Virtual Wallet (`tests/core/virtual_wallet.py`)\\n"
-        "✅ **Config:** MEXC Mode (Fee: 0.1%)\\n"
-        "✅ **Data Safety:** Existing test data preserved.\\n"
-        "✅ **Git:** Synced with remote.\\n"
-        "✅ **Context:** Updated to include test architecture.\\n\\n"
-        "Ready for Phase 2: Data Provider Implementation."
+        "⏳ **Ocean Hunter: Phase 2 Complete**\\n\\n"
+        "✅ **Module:** Data Engine (`tests/core/data_engine.py`)\\n"
+        "✅ **Interface:** `IDataProvider` defined.\\n"
+        "✅ **Function:** CSV Reading & Time Simulation ready.\\n"
+        "✅ **Git:** Synced with remote.\\n\\n"
+        "Ready for Phase 3: Integration (Connecting Wallet + Data)."
     )
     
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
@@ -271,21 +171,14 @@ if __name__ == "__main__":
 # CONFIGURATION
 # ═══════════════════════════════════════════════════════════════
 FOLDERS = [
-    "tests/core" 
+    "tests/core"
 ]
 
 NEW_FILES = {
-    "tests/core/virtual_wallet.py": VIRTUAL_WALLET_CODE,
-    "tests/__init__.py": "",          
-    "tests/core/__init__.py": "",     
-    "report_phase1.py": REPORT_SCRIPT
+    "tests/core/interfaces.py": INTERFACES_CODE,
+    "tests/core/data_engine.py": DATA_ENGINE_CODE,
+    "report_phase2.py": REPORT_SCRIPT
 }
-
-MODIFY_FILES = {
-    "AI_Tools/context_gen.py": CONTEXT_GEN_CODE
-}
-
-MAIN_FILE = "report_phase1.py" 
 
 # ═══════════════════════════════════════════════════════════════
 # EXECUTION STEPS
@@ -298,50 +191,42 @@ def log_error(step, error):
 
 def main():
     print("\n" + "═" * 50)
-    print(f"🔧 BUILD Phase 1: Virtual Wallet (MEXC Safe Mode)")
+    print(f"🔧 BUILD Phase 2: Data Engine (Candle Player)")
     print("═" * 50)
 
     try:
         # 1. Folders
-        print("\n[1/7] 📁 Checking Folders...")
+        print("\n[1/6] 📁 Checking Folders...")
         for f in FOLDERS:
             path = os.path.join(ROOT, f)
             os.makedirs(path, exist_ok=True)
             print(f"      ✅ Verified: {f}/")
 
         # 2. Files
-        print("\n[2/7] 📝 Writing Code Files...")
+        print("\n[2/6] 📝 Writing Code Files...")
         for path, content in NEW_FILES.items():
             full = os.path.join(ROOT, path)
             with open(full, "w", encoding="utf-8") as f:
                 f.write(content)
             print(f"      ✅ Wrote: {path}")
 
-        # 3. Modify Context Gen
-        print("\n[3/7] ✏️ Updating Context Generator...")
-        for path, content in MODIFY_FILES.items():
-            full = os.path.join(ROOT, path)
-            with open(full, "w", encoding="utf-8") as f:
-                f.write(content)
-            print(f"      ✅ Updated: {path}")
-
-        # 4. Run Context Gen
-        print("\n[4/7] 📋 Refreshing Context...")
+        # 3. Context Gen (Reuse existing module)
+        print("\n[3/6] 📋 Refreshing Context...")
         import context_gen
         context_gen.create_context_file()
 
-        # 5. Git Operations (CRITICAL STEP ADDED)
-        print("\n[5/7] 🐙 Git Sync...")
+        # 4. Git Operations
+        print("\n[4/6] 🐙 Git Sync...")
         try:
             setup_git.setup()
-            setup_git.sync("Phase 1: Virtual Wallet Implementation (MEXC)")
+            setup_git.sync("Phase 2: Data Engine Implementation")
             print("      ✅ Git Synced Successfully")
         except Exception as e:
             log_error("Git", f"Sync failed: {e}")
 
-        # 6. Report/Launch
-        print("\n[6/7] 🚀 Sending Report...")
-        subprocess.run([VENV_PYTHON, os.path.join(ROOT, MAIN_FILE)], cwd=ROOT)
+        # 5. Report
+        print("\n[5/6] 🚀 Sending Report...")
+        subprocess.run([VENV_PYTHON, os.path.join(ROOT, "report_phase2.py")], cwd=ROOT)
 
     except Exception as e:
         print(f"\n💥 Critical: {e}")
@@ -352,8 +237,8 @@ def main():
             print(f"\n⚠️ Completed with {len(errors)} errors.")
         else:
             print("\n✅ Build Successful.")
-            if os.path.exists(os.path.join(ROOT, "report_phase1.py")):
-                os.remove(os.path.join(ROOT, "report_phase1.py"))
+            if os.path.exists(os.path.join(ROOT, "report_phase2.py")):
+                os.remove(os.path.join(ROOT, "report_phase2.py"))
 
 if __name__ == "__main__":
     main()
