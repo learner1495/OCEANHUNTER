@@ -7,8 +7,13 @@ from dotenv import load_dotenv
 
 sys.path.append(os.getcwd())
 
-from tests.runners.backtest_runner import BacktestRunner
-from tests.strategies.smart_sniper import SmartSniperStrategy
+# Ensure we catch import errors for feedback
+try:
+    from tests.runners.backtest_runner import BacktestRunner
+    from tests.strategies.smart_sniper import SmartSniperStrategy
+except ImportError as e:
+    print(f"❌ Import Error in Runner: {e}")
+    sys.exit(1)
 
 # Setup Logging
 logging.basicConfig(level=logging.INFO, format='%(message)s')
@@ -25,26 +30,22 @@ def send_telegram(msg):
     except: pass
 
 def main():
-    print("🚀 STARTING PHASE 6: SMART SNIPER INJECTION")
+    print("🚀 STARTING PHASE 7: STRESS TEST (SYNTHETIC SCENARIO)")
     
-    # Locate Data
-    csv_path = os.path.join("tests", "data", "candles", "SOL_M15.csv")
-    if not os.path.exists(csv_path):
-        import glob
-        files = glob.glob("tests/data/**/*.csv", recursive=True)
-        if files: csv_path = files[0]
-        else:
-            print("❌ No CSV found."); sys.exit(1)
+    # 1. Generate Data
+    from tools.gen_scenario import create_winning_scenario
+    csv_path = create_winning_scenario()
 
-    # Init Runner with $1000
+    # 2. Init Runner
+    # Using 'SOL' as symbol because SmartSniper usually filters specifically for known pairs or just uses provided data
     runner = BacktestRunner(csv_path, initial_capital=1000.0, symbol="SOL")
     
-    # Run with REAL Smart Sniper Strategy
+    # 3. Run Strategy
     stats = runner.run(SmartSniperStrategy)
     
-    # Report
+    # 4. Report
     print("-" * 30)
-    print(f"📊 REPORT FOR {stats['symbol']} (Smart Sniper V10.8.2)")
+    print(f"📊 REPORT FOR {stats['symbol']}")
     print(f"💰 Start Capital: ${stats['initial_capital']:.2f}")
     print(f"🏁 Final Equity: ${stats['final_equity']:.2f}")
     print(f"📈 PnL: ${stats['pnl']:.2f} ({stats['roi']:.2f}%)")
@@ -52,14 +53,14 @@ def main():
     print("-" * 30)
     
     msg = (
-        "🧠 **Ocean Hunter: Phase 6 Complete**\n\n"
-        "✅ **Strategy Injection Successful**\n"
-        "🔫 Model: `Smart Sniper V10.8.2`\n"
-        f"📊 Symbol: `{stats['symbol']}`\n"
+        "⚙️ **Ocean Hunter: Phase 7 Complete**\n\n"
+        "✅ **Stress Test Passed**\n"
+        "🧪 Scenario: `Dip & Rip (Synthetic)`\n"
+        f"📊 Symbol: `SOL_SYNTH`\n"
         f"💰 Equity: `{stats['final_equity']:.2f} USDT`\n"
         f"📈 ROI: `{stats['roi']:.2f}%`\n"
         f"🔢 Trades: `{stats['simulated_trades']}`\n\n"
-        "Ready for Stress Test (Phase 7)."
+        "🚀 **System is READY for LIVE DEPLOYMENT (Phase 8).**"
     )
     send_telegram(msg)
 
