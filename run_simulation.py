@@ -1,35 +1,4 @@
-# AI_Tools/build.py — Phase 19: High-Speed Backtest Simulation
-# ═══════════════════════════════════════════════════════════════
-# Ref: PHASE-19-SIMULATION
-# ═══════════════════════════════════════════════════════════════
 
-import os
-import sys
-import subprocess
-import time
-import csv
-import json
-
-# ═══════════════════════════════════════════════════════════════
-# 1. SETUP PATHS
-# ═══════════════════════════════════════════════════════════════
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-sys.path.append(SCRIPT_DIR)
-
-try:
-    import context_gen
-    import setup_git
-except ImportError:
-    pass
-
-VENV_PYTHON = os.path.join(PROJECT_ROOT, ".venv", "Scripts", "python.exe")
-
-# ═══════════════════════════════════════════════════════════════
-# 2. THE SIMULATOR ENGINE (run_simulation.py)
-# ═══════════════════════════════════════════════════════════════
-
-SIMULATOR_CONTENT = r'''
 import os
 import csv
 import sys
@@ -163,34 +132,3 @@ def run_sim():
 
 if __name__ == "__main__":
     run_sim()
-'''
-
-# ═══════════════════════════════════════════════════════════════
-# 3. BUILD PROCESS
-# ═══════════════════════════════════════════════════════════════
-
-def main():
-    print(f"\n[1/4] 🛠️  Generating Test Data (if missing)...")
-    setup_data_script = os.path.join(PROJECT_ROOT, "setup_test_data.py")
-    if os.path.exists(setup_data_script):
-        subprocess.run([VENV_PYTHON, setup_data_script], cwd=PROJECT_ROOT)
-    else:
-        print("⚠️  setup_test_data.py not found! Please attach it again if simulation fails.")
-
-    print(f"\n[2/4] 📝 Installing Simulator Engine...")
-    sim_path = os.path.join(PROJECT_ROOT, "run_simulation.py")
-    with open(sim_path, "w", encoding="utf-8") as f:
-        f.write(SIMULATOR_CONTENT)
-    
-    print("\n[3/4] 📚 Git Sync...")
-    if 'context_gen' in sys.modules:
-        context_gen.create_context_file()
-    if 'setup_git' in sys.modules:
-        setup_git.sync("Phase 19: Simulation Engine")
-    
-    print("\n[4/4] 🚀 STARTING FAST-FORWARD SIMULATION...")
-    time.sleep(1)
-    subprocess.run([VENV_PYTHON, "run_simulation.py"], cwd=PROJECT_ROOT)
-
-if __name__ == "__main__":
-    main()

@@ -1,4 +1,4 @@
-GENERATED: 2026-01-05 23:54:20
+GENERATED: 2026-01-06 00:09:54
 VERSION: 3.1 (Phase 1: Virtual Wallet)
 
 PROJECT STRUCTURE:
@@ -15,6 +15,7 @@ OCEANHUNTER/
     requirements.txt
     run_bot.py
     run_dashboard.py
+    run_simulation.py
     setup_test_data.py
     simple_test.py
     smart_connect.py
@@ -1094,6 +1095,145 @@ def main_menu():
 if __name__ == "__main__":
     os.system('color')
     main_menu()
+
+
+====================
+File: run_simulation.py
+====================
+
+import os
+import csv
+import sys
+from datetime import datetime
+
+# ════════════════ CONFIG ════════════════
+SCENARIO_FILE = os.path.join("tests", "data", "candles", "SOL_M15_DCA.csv")
+INITIAL_BALANCE = 1000.0
+TAKE_PROFIT_PCT = 0.015  # 1.5% Real Target
+DCA_LAYERS = [
+    {"drop": 0.03, "mult": 1.5},  # Layer 1: -3%
+    {"drop": 0.06, "mult": 2.0},  # Layer 2: -6%
+    {"drop": 0.10, "mult": 2.5},  # Layer 3: -10%
+]
+
+# ════════════════ VIRTUAL WALLET ════════════════
+class SimWallet:
+    def __init__(self, balance):
+        self.balance = balance
+        self.position = None
+        self.history = []
+
+    def buy(self, price, timestamp, reason="Entry"):
+        if not self.position:
+            # First Entry: Buy $100
+            amt_usd = 100.0
+            coins = amt_usd / price
+            self.balance -= amt_usd
+            self.position = {
+                "avg_price": price, "coins": coins, "invested": amt_usd, "layer": 0
+            }
+            self.history.append(f"[{timestamp}] 🛒 BUY (Entry) @ {price} | Inv: ${amt_usd}")
+            return True
+        else:
+            # DCA Entry
+            layer = self.position["layer"]
+            if layer >= len(DCA_LAYERS): return False
+            
+            mult = DCA_LAYERS[layer]["mult"]
+            amt_usd = self.position["invested"] * (mult - 1) # Simple DCA sizing
+            
+            if self.balance < amt_usd:
+                self.history.append(f"[{timestamp}] ⚠️ NO FUNDS FOR DCA!")
+                return False
+
+            coins = amt_usd / price
+            self.balance -= amt_usd
+            
+            # Update Position
+            total_coins = self.position["coins"] + coins
+            total_invested = self.position["invested"] + amt_usd
+            new_avg = total_invested / total_coins
+            
+            self.position["avg_price"] = new_avg
+            self.position["coins"] = total_coins
+            self.position["invested"] = total_invested
+            self.position["layer"] += 1
+            
+            self.history.append(f"[{timestamp}] 📉 BUY (DCA L{self.position['layer']}) @ {price} | New Avg: {new_avg:.2f}")
+            return True
+
+    def sell(self, price, timestamp, reason="TP"):
+        if not self.position: return
+        
+        coins = self.position["coins"]
+        revenue = coins * price
+        invested = self.position["invested"]
+        pnl = revenue - invested
+        pnl_pct = (pnl / invested) * 100
+        
+        self.balance += revenue
+        self.history.append(f"[{timestamp}] 🎉 SELL ({reason}) @ {price} | PnL: ${pnl:.2f} ({pnl_pct:.2f}%) | Bal: ${self.balance:.2f}")
+        self.position = None
+        return True
+
+# ════════════════ ENGINE ════════════════
+def run_sim():
+    if not os.path.exists(SCENARIO_FILE):
+        print(f"❌ Error: Test data not found: {SCENARIO_FILE}")
+        return
+
+    wallet = SimWallet(INITIAL_BALANCE)
+    print(f"⏯️  RUNNING SIMULATION: SOL_M15_DCA (Crash Scenario)...")
+    print("-" * 60)
+
+    with open(SCENARIO_FILE, "r") as f:
+        reader = csv.DictReader(f)
+        candles = list(reader)
+
+    # Simplified Loop (Simulating real-time feed)
+    rsi_history = [] 
+    
+    for i, row in enumerate(candles):
+        price = float(row["close"])
+        timestamp = datetime.fromtimestamp(float(row["timestamp"])).strftime("%Y-%m-%d %H:%M")
+        scenario_tag = row["scenario_tag"]
+        
+        # 1. LOGIC (Simplified for Speed Test)
+        # We assume the "tag" in the CSV dictates the market condition
+        # In real bot, this is calculated by RSI/BB
+        
+        should_enter = (scenario_tag == "ENTRY_SIGNAL")
+        
+        # 2. WALLET MANAGEMENT
+        if wallet.position:
+            avg = wallet.position["avg_price"]
+            pnl_pct = (price - avg) / avg
+            layer = wallet.position["layer"]
+            
+            # Check Exit
+            if pnl_pct >= TAKE_PROFIT_PCT or scenario_tag == "DCA_EXIT_PROFIT":
+                wallet.sell(price, timestamp)
+            
+            # Check DCA
+            elif layer < len(DCA_LAYERS):
+                trigger = DCA_LAYERS[layer]["drop"]
+                # In simulation, we force trigger if tag says so OR price drops
+                if pnl_pct <= -trigger or "DCA_LAYER" in scenario_tag:
+                    wallet.buy(price, timestamp, "DCA")
+                    
+        else:
+            if should_enter:
+                wallet.buy(price, timestamp)
+
+    print("-" * 60)
+    for log in wallet.history:
+        print(log)
+    print("-" * 60)
+    print(f"🏁 FINAL BALANCE: ${wallet.balance:.2f}")
+    print(f"📈 TOTAL PROFIT:  ${wallet.balance - INITIAL_BALANCE:.2f}")
+
+if __name__ == "__main__":
+    run_sim()
 
 
 ====================
@@ -3499,15 +3639,17 @@ All 15 scenarios PASS → Paper Mode OK → LIVE_TEST eligible
 ====================
 File: Ai_Tools\build.py
 ====================
-# AI_Tools/build.py — Phase 18: DCA Logic + Aggressive Test
+# AI_Tools/build.py — Phase 19: High-Speed Backtest Simulation
 # ═══════════════════════════════════════════════════════════════
-# Ref: PHASE-18-DCA-TEST
+# Ref: PHASE-19-SIMULATION
 # ═══════════════════════════════════════════════════════════════
 
 import os
 import sys
 import subprocess
 import time
+import csv
+import json
 
 # ═══════════════════════════════════════════════════════════════
 # 1. SETUP PATHS
@@ -3525,219 +3667,143 @@ except ImportError:
 VENV_PYTHON = os.path.join(PROJECT_ROOT, ".venv", "Scripts", "python.exe")
 
 # ═══════════════════════════════════════════════════════════════
-# 2. THE BOT LOGIC (With DCA & Lower Threshold)
+# 2. THE SIMULATOR ENGINE (run_simulation.py)
 # ═══════════════════════════════════════════════════════════════
 
-BOT_CONTENT = r'''
+SIMULATOR_CONTENT = r'''
 import os
-import time
-import requests
-import statistics
+import csv
+import sys
 from datetime import datetime
-from dotenv import load_dotenv
-
-# Load Environment
-load_dotenv()
 
 # ════════════════ CONFIG ════════════════
-SYMBOL = "BTCUSDT"
-TIMEFRAME = "1m"
-# TEMPORARY: Lower threshold to FORCE a trade for testing
-ENTRY_THRESHOLD = 40  # Was 70. Set to 40 so it buys immediately.
-TAKE_PROFIT_PCT = 0.0015  # 0.15% Target for quick scalp test
-STOP_LOSS_PCT = 0.10      # Deep stop loss to allow DCA to work
-
-# DCA SETTINGS (Based on Architecture)
+SCENARIO_FILE = os.path.join("tests", "data", "candles", "SOL_M15_DCA.csv")
+INITIAL_BALANCE = 1000.0
+TAKE_PROFIT_PCT = 0.015  # 1.5% Real Target
 DCA_LAYERS = [
-    {"drop": 0.005, "mult": 1.5},  # Layer 1: Drop 0.5% -> Buy 1.5x (TEST SETTING)
-    {"drop": 0.010, "mult": 2.0},  # Layer 2: Drop 1.0% -> Buy 2.0x (TEST SETTING)
+    {"drop": 0.03, "mult": 1.5},  # Layer 1: -3%
+    {"drop": 0.06, "mult": 2.0},  # Layer 2: -6%
+    {"drop": 0.10, "mult": 2.5},  # Layer 3: -10%
 ]
-# Note: Real architecture has 3%, 6% drops. I reduced them for FAST testing.
 
-# API CONFIG
-TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TG_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-PROXY_URL = os.getenv("HTTPS_PROXY", "http://127.0.0.1:10809")
-PROXIES = {"http": PROXY_URL, "https": PROXY_URL}
+# ════════════════ VIRTUAL WALLET ════════════════
+class SimWallet:
+    def __init__(self, balance):
+        self.balance = balance
+        self.position = None
+        self.history = []
 
-# ════════════════ VIRTUAL WALLET (Advanced) ════════════════
-class PaperWallet:
-    def __init__(self, initial_balance=1000.0):
-        self.balance = initial_balance
-        self.position = None 
-        # position structure: {entry_price, amount, avg_price, layer}
-
-    def buy(self, price, score, amount_usd=None):
-        timestamp = datetime.now().strftime("%H:%M:%S")
-        
-        # Initial Entry
+    def buy(self, price, timestamp, reason="Entry"):
         if not self.position:
-            buy_amount = 100.0 # Start with $100
-            coin_amount = buy_amount / price
-            self.balance -= buy_amount
-            
+            # First Entry: Buy $100
+            amt_usd = 100.0
+            coins = amt_usd / price
+            self.balance -= amt_usd
             self.position = {
-                "avg_price": price,
-                "total_coins": coin_amount,
-                "invested": buy_amount,
-                "layer": 0,
-                "time": timestamp
+                "avg_price": price, "coins": coins, "invested": amt_usd, "layer": 0
             }
-            return "ENTRY", buy_amount
-
-        # DCA Entry
+            self.history.append(f"[{timestamp}] 🛒 BUY (Entry) @ {price} | Inv: ${amt_usd}")
+            return True
         else:
-            # Calculate next layer amount
-            current_layer = self.position["layer"]
-            if current_layer >= len(DCA_LAYERS): return False, 0
+            # DCA Entry
+            layer = self.position["layer"]
+            if layer >= len(DCA_LAYERS): return False
             
-            multiplier = DCA_LAYERS[current_layer]["mult"]
-            buy_amount = self.position["invested"] * (multiplier - 1) # Simplified DCA sizing
+            mult = DCA_LAYERS[layer]["mult"]
+            amt_usd = self.position["invested"] * (mult - 1) # Simple DCA sizing
             
-            # Check funds
-            if self.balance < buy_amount:
-                print("⚠️ Not enough funds for DCA!")
-                return False, 0
-                
-            coin_amount = buy_amount / price
-            self.balance -= buy_amount
+            if self.balance < amt_usd:
+                self.history.append(f"[{timestamp}] ⚠️ NO FUNDS FOR DCA!")
+                return False
+
+            coins = amt_usd / price
+            self.balance -= amt_usd
             
-            # Update Averages
-            total_coins = self.position["total_coins"] + coin_amount
-            total_invested = self.position["invested"] + buy_amount
+            # Update Position
+            total_coins = self.position["coins"] + coins
+            total_invested = self.position["invested"] + amt_usd
             new_avg = total_invested / total_coins
             
             self.position["avg_price"] = new_avg
-            self.position["total_coins"] = total_coins
+            self.position["coins"] = total_coins
             self.position["invested"] = total_invested
             self.position["layer"] += 1
             
-            return f"DCA-{current_layer+1}", buy_amount
+            self.history.append(f"[{timestamp}] 📉 BUY (DCA L{self.position['layer']}) @ {price} | New Avg: {new_avg:.2f}")
+            return True
 
-    def sell(self, price, reason):
-        if not self.position: return False
+    def sell(self, price, timestamp, reason="TP"):
+        if not self.position: return
         
-        amount = self.position["total_coins"]
-        revenue = amount * price
+        coins = self.position["coins"]
+        revenue = coins * price
         invested = self.position["invested"]
         pnl = revenue - invested
         pnl_pct = (pnl / invested) * 100
         
         self.balance += revenue
-        old_pos = self.position
+        self.history.append(f"[{timestamp}] 🎉 SELL ({reason}) @ {price} | PnL: ${pnl:.2f} ({pnl_pct:.2f}%) | Bal: ${self.balance:.2f}")
         self.position = None
-        return old_pos, pnl, pnl_pct
+        return True
 
-wallet = PaperWallet()
+# ════════════════ ENGINE ════════════════
+def run_sim():
+    if not os.path.exists(SCENARIO_FILE):
+        print(f"❌ Error: Test data not found: {SCENARIO_FILE}")
+        return
 
-# ════════════════ TELEGRAM ════════════════
-def send_telegram(msg):
-    if not TG_TOKEN: return
-    url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-    payload = {"chat_id": TG_CHAT_ID, "text": msg, "parse_mode": "HTML"}
-    try:
-        requests.post(url, json=payload, proxies=PROXIES, timeout=5)
-    except: pass
+    wallet = SimWallet(INITIAL_BALANCE)
+    print(f"⏯️  RUNNING SIMULATION: SOL_M15_DCA (Crash Scenario)...")
+    print("-" * 60)
 
-# ════════════════ MARKET DATA ════════════════
-def get_market_data():
-    base_url = "https://api.mexc.com/api/v3/klines"
-    params = {"symbol": SYMBOL, "interval": TIMEFRAME, "limit": 50}
-    try:
-        resp = requests.get(base_url, params=params, proxies=PROXIES, timeout=5)
-        return resp.json()
-    except: return None
+    with open(SCENARIO_FILE, "r") as f:
+        reader = csv.DictReader(f)
+        candles = list(reader)
 
-# ════════════════ INDICATORS ════════════════
-def calculate_indicators(klines):
-    closes = [float(k[4]) for k in klines]
-    current_price = closes[-1]
+    # Simplified Loop (Simulating real-time feed)
+    rsi_history = [] 
     
-    # RSI
-    period = 14
-    deltas = [closes[i] - closes[i-1] for i in range(1, len(closes))]
-    gains = [d if d > 0 else 0 for d in deltas]
-    losses = [abs(d) if d < 0 else 0 for d in deltas]
-    avg_gain = sum(gains[-period:]) / period
-    avg_loss = sum(losses[-period:]) / period
-    rs = avg_gain / avg_loss if avg_loss != 0 else 0
-    rsi = 100 - (100 / (1 + rs))
-    
-    # Score Logic
-    score = 45 # Baseline
-    if rsi < 40: score += 20
-    elif rsi < 55: score += 10 # Boost score for testing
-    if closes[-1] > closes[-2]: score += 10
-    
-    return {"price": current_price, "rsi": rsi, "score": score}
-
-# ════════════════ MAIN LOOP ════════════════
-def main():
-    os.system('cls' if os.name == 'nt' else 'clear')
-    print(f"🧪 AGGRESSIVE TEST MODE: Threshold {ENTRY_THRESHOLD}")
-    print(f"💰 Wallet: ${wallet.balance}")
-    send_telegram(f"🧪 <b>TEST MODE STARTED</b>\nEntry Threshold: {ENTRY_THRESHOLD}")
-
-    while True:
-        try:
-            data = get_market_data()
-            if not data:
-                time.sleep(2)
-                continue
-                
-            ind = calculate_indicators(data)
-            price = ind['price']
-            score = ind['score']
-            rsi = round(ind['rsi'], 1)
-            t = datetime.now().strftime("%H:%M:%S")
-
-            # 1. MANAGE POSITION
-            if wallet.position:
-                avg = wallet.position['avg_price']
-                pnl_pct = (price - avg) / avg
-                layer = wallet.position['layer']
-                
-                # Check DCA
-                next_layer_idx = layer
-                if next_layer_idx < len(DCA_LAYERS):
-                    trigger_drop = DCA_LAYERS[next_layer_idx]["drop"]
-                    # If price drops below trigger %
-                    if pnl_pct <= -trigger_drop:
-                        type_str, amt = wallet.buy(price, score)
-                        if type_str:
-                            print(f"\n📉 DCA TRIGGERED! Bought ${amt} @ {price}")
-                            send_telegram(f"📉 <b>DCA LEVEL {layer+1}</b>\nNew Avg: {wallet.position['avg_price']:.2f}")
-
-                # Check Profit
-                if pnl_pct >= TAKE_PROFIT_PCT:
-                    pos, pnl, pct = wallet.sell(price, "TP")
-                    print(f"\n🎉 TAKE PROFIT! ${pnl:.2f} ({pct:.2f}%)")
-                    send_telegram(f"✅ <b>PROFIT SECURED</b>\nAmount: ${pnl:.2f}\nBal: ${wallet.balance:.2f}")
-
-                # Status Line
-                color = "\033[92m" if pnl_pct > 0 else "\033[91m"
-                print(f"[{t}] 🔓 POS (L{layer}) | Price: {price} | Avg: {avg:.2f} | PnL: {color}{pnl_pct*100:.2f}%\033[0m")
-
-            # 2. SEARCH FOR ENTRY
-            else:
-                s_color = "\033[92m" if score >= ENTRY_THRESHOLD else "\033[90m"
-                print(f"[{t}] 🔎 {price} | Score: {s_color}{score}\033[0m | RSI: {rsi}")
-                
-                if score >= ENTRY_THRESHOLD:
-                    type_str, amt = wallet.buy(price, score)
-                    print(f"\n🚀 ENTERING TRADE! Bought ${amt} @ {price}")
-                    send_telegram(f"🚀 <b>BUY SIGNAL</b>\nPrice: {price}\nScore: {score}")
-
-            time.sleep(3)
+    for i, row in enumerate(candles):
+        price = float(row["close"])
+        timestamp = datetime.fromtimestamp(float(row["timestamp"])).strftime("%Y-%m-%d %H:%M")
+        scenario_tag = row["scenario_tag"]
+        
+        # 1. LOGIC (Simplified for Speed Test)
+        # We assume the "tag" in the CSV dictates the market condition
+        # In real bot, this is calculated by RSI/BB
+        
+        should_enter = (scenario_tag == "ENTRY_SIGNAL")
+        
+        # 2. WALLET MANAGEMENT
+        if wallet.position:
+            avg = wallet.position["avg_price"]
+            pnl_pct = (price - avg) / avg
+            layer = wallet.position["layer"]
             
-        except KeyboardInterrupt:
-            break
-        except Exception as e:
-            print(f"Error: {e}")
-            time.sleep(5)
+            # Check Exit
+            if pnl_pct >= TAKE_PROFIT_PCT or scenario_tag == "DCA_EXIT_PROFIT":
+                wallet.sell(price, timestamp)
+            
+            # Check DCA
+            elif layer < len(DCA_LAYERS):
+                trigger = DCA_LAYERS[layer]["drop"]
+                # In simulation, we force trigger if tag says so OR price drops
+                if pnl_pct <= -trigger or "DCA_LAYER" in scenario_tag:
+                    wallet.buy(price, timestamp, "DCA")
+                    
+        else:
+            if should_enter:
+                wallet.buy(price, timestamp)
+
+    print("-" * 60)
+    for log in wallet.history:
+        print(log)
+    print("-" * 60)
+    print(f"🏁 FINAL BALANCE: ${wallet.balance:.2f}")
+    print(f"📈 TOTAL PROFIT:  ${wallet.balance - INITIAL_BALANCE:.2f}")
 
 if __name__ == "__main__":
-    main()
+    run_sim()
 '''
 
 # ═══════════════════════════════════════════════════════════════
@@ -3745,27 +3811,27 @@ if __name__ == "__main__":
 # ═══════════════════════════════════════════════════════════════
 
 def main():
-    print(f"\n[1/3] 🧪 Installing Test Logic (DCA + Low Threshold)...")
-    
-    bot_path = os.path.join(PROJECT_ROOT, "run_bot.py")
-    with open(bot_path, "w", encoding="utf-8") as f:
-        f.write(BOT_CONTENT)
-    
-    print("      ✅ Mode: AGGRESSIVE TESTING")
+    print(f"\n[1/4] 🛠️  Generating Test Data (if missing)...")
+    setup_data_script = os.path.join(PROJECT_ROOT, "setup_test_data.py")
+    if os.path.exists(setup_data_script):
+        subprocess.run([VENV_PYTHON, setup_data_script], cwd=PROJECT_ROOT)
+    else:
+        print("⚠️  setup_test_data.py not found! Please attach it again if simulation fails.")
 
-    print("\n[2/3] 📚 Git Sync...")
+    print(f"\n[2/4] 📝 Installing Simulator Engine...")
+    sim_path = os.path.join(PROJECT_ROOT, "run_simulation.py")
+    with open(sim_path, "w", encoding="utf-8") as f:
+        f.write(SIMULATOR_CONTENT)
+    
+    print("\n[3/4] 📚 Git Sync...")
     if 'context_gen' in sys.modules:
         context_gen.create_context_file()
     if 'setup_git' in sys.modules:
-        setup_git.sync("Phase 18: DCA Test Mode")
+        setup_git.sync("Phase 19: Simulation Engine")
     
-    print("\n[3/3] 🏁 Launching Bot...")
-    time.sleep(2)
-    if sys.platform == "win32":
-        bat_path = os.path.join(PROJECT_ROOT, "run_dashboard.bat")
-        os.system(f'start "" "{bat_path}"')
-    else:
-        subprocess.run([VENV_PYTHON, "run_dashboard.py"], cwd=PROJECT_ROOT)
+    print("\n[4/4] 🚀 STARTING FAST-FORWARD SIMULATION...")
+    time.sleep(1)
+    subprocess.run([VENV_PYTHON, "run_simulation.py"], cwd=PROJECT_ROOT)
 
 if __name__ == "__main__":
     main()
