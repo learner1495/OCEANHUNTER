@@ -1,4 +1,4 @@
-GENERATED: 2026-01-05 21:38:03
+GENERATED: 2026-01-05 21:50:40
 VERSION: 3.1 (Phase 1: Virtual Wallet)
 
 PROJECT STRUCTURE:
@@ -947,11 +947,11 @@ def clear_screen():
 def print_banner():
     clear_screen()
     print(Colors.CYAN + "╔════════════════════════════════════════════════════════════╗" + Colors.ENDC)
-    print(Colors.CYAN + "║   " + Colors.BOLD + "🌊 OCEAN HUNTER | COMMAND CENTER v2.6" + Colors.ENDC + Colors.CYAN + "                  ║" + Colors.ENDC)
+    print(Colors.CYAN + "║   " + Colors.BOLD + "🌊 OCEAN HUNTER | COMMAND CENTER v2.7" + Colors.ENDC + Colors.CYAN + "                  ║" + Colors.ENDC)
     print(Colors.CYAN + "╚════════════════════════════════════════════════════════════╝" + Colors.ENDC)
     print(f" 📍 Root: {os.getcwd()}")
     
-    if os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"):
+    if os.getenv("TELEGRAM_BOT_TOKEN"):
         print(f" 🔐 Telegram: {Colors.GREEN}Configured{Colors.ENDC}")
     else:
         print(f" 🔐 Telegram: {Colors.FAIL}MISSING IN .ENV{Colors.ENDC}")
@@ -972,7 +972,7 @@ def main_menu():
         print_banner()
         print(" [1] 🚀 START BOT (Live)")
         print(" [2] 🛡️ START BOT (Safe Mode)")
-        print(" [3] 📡 TEST TELEGRAM (Send Message)")
+        print(" [3] 📡 TEST TELEGRAM (Auto-Detect Proxy)")
         print(" [4] 🛠️ RE-BUILD (Update Code)")
         print(" [5] ❌ EXIT")
         print("\n" + Colors.BLUE + "──────────────────────────────────────────────────────────────" + Colors.ENDC)
@@ -1857,53 +1857,89 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-print("-" * 50)
-print("📡 TELEGRAM CONNECTIVITY TEST")
-print("-" * 50)
+print("-" * 60)
+print("📡 TELEGRAM CONNECTIVITY TEST (SMART PROXY)")
+print("-" * 60)
 
 if not TOKEN or not CHAT_ID:
-    print("❌ ERROR: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not found in .env")
+    print("❌ ERROR: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID missing.")
     sys.exit(1)
+
+# List of common local proxies used by V2Ray, NekoBox, Clash, etc.
+# We will try them one by one.
+POTENTIAL_PROXIES = [
+    None,                           # Try Direct first (might work if VPN is in TUN mode)
+    "http://127.0.0.1:10809",       # V2Ray Default HTTP
+    "socks5://127.0.0.1:10808",     # V2Ray Default SOCKS
+    "http://127.0.0.1:2081",        # NekoBox/Hiddify HTTP
+    "socks5://127.0.0.1:2080",      # NekoBox/Hiddify SOCKS
+    "http://127.0.0.1:7890",        # Clash Default
+    "socks5://127.0.0.1:7891",      # Clash SOCKS
+    "http://127.0.0.1:1080",        # Generic Proxy
+]
+
+working_proxy = None
+bot_username = ""
 
 print(f"🔹 Token: {TOKEN[:5]}...{TOKEN[-5:]}")
-print(f"🔹 Chat ID: {CHAT_ID}")
+print(f"🔹 Checking {len(POTENTIAL_PROXIES)} connection methods...")
 
-print("\n[1] Checking Bot Status...")
-try:
-    url = f"https://api.telegram.org/bot{TOKEN}/getMe"
-    resp = requests.get(url, timeout=10)
-    data = resp.json()
+# 1. FIND WORKING PROXY
+for proxy_url in POTENTIAL_PROXIES:
+    proxies_dict = {"https": proxy_url, "http": proxy_url} if proxy_url else None
+    label = proxy_url if proxy_url else "DIRECT CONNECTION"
     
-    if data.get("ok"):
-        bot_name = data["result"]["first_name"]
-        print(f"   ✅ Connected as: @{data['result']['username']} ({bot_name})")
-    else:
-        print(f"   ❌ API Error: {data}")
-        sys.exit(1)
-except Exception as e:
-    print(f"   ❌ Connection Failed: {e}")
-    print("   (Check your VPN/Internet)")
+    print(f"\n   👉 Trying: {label} ... ", end="")
+    try:
+        url = f"https://api.telegram.org/bot{TOKEN}/getMe"
+        resp = requests.get(url, proxies=proxies_dict, timeout=5)
+        
+        if resp.status_code == 200:
+            print("✅ SUCCESS!")
+            working_proxy = proxies_dict
+            data = resp.json()
+            bot_username = data['result']['username']
+            print(f"      🎉 Connected to Bot: @{bot_username}")
+            break
+        else:
+            print(f"❌ Failed (HTTP {resp.status_code})")
+    except Exception as e:
+        print("❌ Failed (Timeout/Error)")
+
+if not working_proxy and not bot_username:
+    print("\n" + "="*60)
+    print("❌ CRITICAL: ALL CONNECTION ATTEMPTS FAILED.")
+    print("   Please check your V2Ray/VPN settings.")
+    print("   Look for 'Local Port' or 'HTTP Proxy Port' in your VPN app.")
+    print("   Common ports: 10809, 2081, 7890")
+    print("="*60)
     sys.exit(1)
 
-print("\n[2] Sending Test Message...")
+# 2. SEND MESSAGE
+print(f"\n[2] Sending Test Message using found path...")
 try:
-    msg = "🔔 OCEAN HUNTER: Connection Successful!\nYour bot is ready to trade."
+    msg = f"🔔 OCEAN HUNTER: Connection Successful!\n🚀 Proxy used: {working_proxy if working_proxy else 'Direct'}"
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": msg}
     
-    resp = requests.post(url, json=payload, timeout=10)
+    resp = requests.post(url, json=payload, proxies=working_proxy, timeout=10)
     data = resp.json()
     
     if data.get("ok"):
         print("   ✅ MESSAGE SENT SUCCESSFULLY!")
         print("   👉 Check your Telegram app now.")
+        
+        # Save working proxy to .env for future use (Optional logic could go here)
+        print(f"   ℹ️  To make this permanent, you might need to set HTTPS_PROXY in .env")
+        if working_proxy:
+             print(f"       Example: HTTPS_PROXY={working_proxy['https']}")
     else:
         print(f"   ❌ Send Failed: {data}")
 
 except Exception as e:
     print(f"   ❌ Error sending message: {e}")
 
-print("-" * 50)
+print("-" * 60)
 
 
 ====================
@@ -3370,9 +3406,9 @@ All 15 scenarios PASS → Paper Mode OK → LIVE_TEST eligible
 ====================
 File: Ai_Tools\build.py
 ====================
-# AI_Tools/build.py — Phase 13: Fix Console Input (Pop-up Window)
+# AI_Tools/build.py — Phase 14: Smart Proxy Auto-Detect
 # ═══════════════════════════════════════════════════════════════
-# Ref: PHASE-13-FIX-WINDOW
+# Ref: PHASE-14-PROXY-FIX
 # ═══════════════════════════════════════════════════════════════
 
 import os
@@ -3397,9 +3433,10 @@ except ImportError:
 VENV_PYTHON = os.path.join(PROJECT_ROOT, ".venv", "Scripts", "python.exe")
 
 # ═══════════════════════════════════════════════════════════════
-# 2. TEMPLATES (UNCHANGED)
+# 2. TEMPLATES
 # ═══════════════════════════════════════════════════════════════
 
+# A. Dashboard (Unchanged)
 DASHBOARD_CONTENT = r'''
 import os
 import sys
@@ -3428,11 +3465,11 @@ def clear_screen():
 def print_banner():
     clear_screen()
     print(Colors.CYAN + "╔════════════════════════════════════════════════════════════╗" + Colors.ENDC)
-    print(Colors.CYAN + "║   " + Colors.BOLD + "🌊 OCEAN HUNTER | COMMAND CENTER v2.6" + Colors.ENDC + Colors.CYAN + "                  ║" + Colors.ENDC)
+    print(Colors.CYAN + "║   " + Colors.BOLD + "🌊 OCEAN HUNTER | COMMAND CENTER v2.7" + Colors.ENDC + Colors.CYAN + "                  ║" + Colors.ENDC)
     print(Colors.CYAN + "╚════════════════════════════════════════════════════════════╝" + Colors.ENDC)
     print(f" 📍 Root: {os.getcwd()}")
     
-    if os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"):
+    if os.getenv("TELEGRAM_BOT_TOKEN"):
         print(f" 🔐 Telegram: {Colors.GREEN}Configured{Colors.ENDC}")
     else:
         print(f" 🔐 Telegram: {Colors.FAIL}MISSING IN .ENV{Colors.ENDC}")
@@ -3453,7 +3490,7 @@ def main_menu():
         print_banner()
         print(" [1] 🚀 START BOT (Live)")
         print(" [2] 🛡️ START BOT (Safe Mode)")
-        print(" [3] 📡 TEST TELEGRAM (Send Message)")
+        print(" [3] 📡 TEST TELEGRAM (Auto-Detect Proxy)")
         print(" [4] 🛠️ RE-BUILD (Update Code)")
         print(" [5] ❌ EXIT")
         print("\n" + Colors.BLUE + "──────────────────────────────────────────────────────────────" + Colors.ENDC)
@@ -3484,6 +3521,7 @@ if __name__ == "__main__":
     main_menu()
 '''
 
+# B. SMART TELEGRAM TESTER (Proxy Auto-Detect)
 TELEGRAM_TESTER_CONTENT = r'''
 import os
 import requests
@@ -3495,55 +3533,92 @@ load_dotenv()
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-print("-" * 50)
-print("📡 TELEGRAM CONNECTIVITY TEST")
-print("-" * 50)
+print("-" * 60)
+print("📡 TELEGRAM CONNECTIVITY TEST (SMART PROXY)")
+print("-" * 60)
 
 if not TOKEN or not CHAT_ID:
-    print("❌ ERROR: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not found in .env")
+    print("❌ ERROR: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID missing.")
     sys.exit(1)
+
+# List of common local proxies used by V2Ray, NekoBox, Clash, etc.
+# We will try them one by one.
+POTENTIAL_PROXIES = [
+    None,                           # Try Direct first (might work if VPN is in TUN mode)
+    "http://127.0.0.1:10809",       # V2Ray Default HTTP
+    "socks5://127.0.0.1:10808",     # V2Ray Default SOCKS
+    "http://127.0.0.1:2081",        # NekoBox/Hiddify HTTP
+    "socks5://127.0.0.1:2080",      # NekoBox/Hiddify SOCKS
+    "http://127.0.0.1:7890",        # Clash Default
+    "socks5://127.0.0.1:7891",      # Clash SOCKS
+    "http://127.0.0.1:1080",        # Generic Proxy
+]
+
+working_proxy = None
+bot_username = ""
 
 print(f"🔹 Token: {TOKEN[:5]}...{TOKEN[-5:]}")
-print(f"🔹 Chat ID: {CHAT_ID}")
+print(f"🔹 Checking {len(POTENTIAL_PROXIES)} connection methods...")
 
-print("\n[1] Checking Bot Status...")
-try:
-    url = f"https://api.telegram.org/bot{TOKEN}/getMe"
-    resp = requests.get(url, timeout=10)
-    data = resp.json()
+# 1. FIND WORKING PROXY
+for proxy_url in POTENTIAL_PROXIES:
+    proxies_dict = {"https": proxy_url, "http": proxy_url} if proxy_url else None
+    label = proxy_url if proxy_url else "DIRECT CONNECTION"
     
-    if data.get("ok"):
-        bot_name = data["result"]["first_name"]
-        print(f"   ✅ Connected as: @{data['result']['username']} ({bot_name})")
-    else:
-        print(f"   ❌ API Error: {data}")
-        sys.exit(1)
-except Exception as e:
-    print(f"   ❌ Connection Failed: {e}")
-    print("   (Check your VPN/Internet)")
+    print(f"\n   👉 Trying: {label} ... ", end="")
+    try:
+        url = f"https://api.telegram.org/bot{TOKEN}/getMe"
+        resp = requests.get(url, proxies=proxies_dict, timeout=5)
+        
+        if resp.status_code == 200:
+            print("✅ SUCCESS!")
+            working_proxy = proxies_dict
+            data = resp.json()
+            bot_username = data['result']['username']
+            print(f"      🎉 Connected to Bot: @{bot_username}")
+            break
+        else:
+            print(f"❌ Failed (HTTP {resp.status_code})")
+    except Exception as e:
+        print("❌ Failed (Timeout/Error)")
+
+if not working_proxy and not bot_username:
+    print("\n" + "="*60)
+    print("❌ CRITICAL: ALL CONNECTION ATTEMPTS FAILED.")
+    print("   Please check your V2Ray/VPN settings.")
+    print("   Look for 'Local Port' or 'HTTP Proxy Port' in your VPN app.")
+    print("   Common ports: 10809, 2081, 7890")
+    print("="*60)
     sys.exit(1)
 
-print("\n[2] Sending Test Message...")
+# 2. SEND MESSAGE
+print(f"\n[2] Sending Test Message using found path...")
 try:
-    msg = "🔔 OCEAN HUNTER: Connection Successful!\nYour bot is ready to trade."
+    msg = f"🔔 OCEAN HUNTER: Connection Successful!\n🚀 Proxy used: {working_proxy if working_proxy else 'Direct'}"
     url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
     payload = {"chat_id": CHAT_ID, "text": msg}
     
-    resp = requests.post(url, json=payload, timeout=10)
+    resp = requests.post(url, json=payload, proxies=working_proxy, timeout=10)
     data = resp.json()
     
     if data.get("ok"):
         print("   ✅ MESSAGE SENT SUCCESSFULLY!")
         print("   👉 Check your Telegram app now.")
+        
+        # Save working proxy to .env for future use (Optional logic could go here)
+        print(f"   ℹ️  To make this permanent, you might need to set HTTPS_PROXY in .env")
+        if working_proxy:
+             print(f"       Example: HTTPS_PROXY={working_proxy['https']}")
     else:
         print(f"   ❌ Send Failed: {data}")
 
 except Exception as e:
     print(f"   ❌ Error sending message: {e}")
 
-print("-" * 50)
+print("-" * 60)
 '''
 
+# C. BAT Launcher (Unchanged)
 BAT_CONTENT = r'''
 @echo off
 cd /d "%~dp0"
@@ -3564,7 +3639,6 @@ if exist ".venv\Scripts\python.exe" (
 def main():
     print(f"\n[1/4] 🏗️  Building in: {PROJECT_ROOT}")
     
-    # Files Creation
     with open(os.path.join(PROJECT_ROOT, "run_dashboard.py"), "w", encoding="utf-8") as f:
         f.write(DASHBOARD_CONTENT)
     with open(os.path.join(PROJECT_ROOT, "test_telegram_conn.py"), "w", encoding="utf-8") as f:
@@ -3572,35 +3646,25 @@ def main():
     with open(os.path.join(PROJECT_ROOT, "run_dashboard.bat"), "w", encoding="utf-8") as f:
         f.write(BAT_CONTENT)
     
-    print("      ✅ Files created (Dashboard, Tester, BAT)")
+    print("      ✅ Smart Telegram Tester installed.")
 
-    # Git Sync
     print("\n[2/4] 📚 Git Sync...")
     if 'context_gen' in sys.modules:
         context_gen.create_context_file()
     if 'setup_git' in sys.modules:
-        setup_git.sync("Phase 13: Telegram Tools & Fix Window")
+        setup_git.sync("Phase 14: Smart Proxy Fix")
     print("      ✅ Synced")
 
-    # Launch logic (UPDATED FOR WINDOWS POPUP)
     print("\n[3/4] 🚀 Launching Dashboard...")
-    print("      ⚠️  A new window will open. Please check your taskbar!")
+    print("      ⚠️  A new window will open...")
     time.sleep(1)
     
-    runner = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
-    
-    # FIX: Force open a new window on Windows
+    # Force open external window
     if sys.platform == "win32":
         bat_path = os.path.join(PROJECT_ROOT, "run_dashboard.bat")
-        # 'start' command opens a new independent window
         os.system(f'start "" "{bat_path}"')
-        print("      ✅ Opened in external window.")
     else:
-        # Fallback for Linux/Mac
-        try:
-            subprocess.run([runner, "run_dashboard.py"], cwd=PROJECT_ROOT)
-        except KeyboardInterrupt:
-            print("\n👋 Exited.")
+        subprocess.run([sys.executable, "run_dashboard.py"], cwd=PROJECT_ROOT)
 
 if __name__ == "__main__":
     main()

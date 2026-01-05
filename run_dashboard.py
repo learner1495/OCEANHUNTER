@@ -26,11 +26,11 @@ def clear_screen():
 def print_banner():
     clear_screen()
     print(Colors.CYAN + "╔════════════════════════════════════════════════════════════╗" + Colors.ENDC)
-    print(Colors.CYAN + "║   " + Colors.BOLD + "🌊 OCEAN HUNTER | COMMAND CENTER v2.6" + Colors.ENDC + Colors.CYAN + "                  ║" + Colors.ENDC)
+    print(Colors.CYAN + "║   " + Colors.BOLD + "🌊 OCEAN HUNTER | COMMAND CENTER v2.7" + Colors.ENDC + Colors.CYAN + "                  ║" + Colors.ENDC)
     print(Colors.CYAN + "╚════════════════════════════════════════════════════════════╝" + Colors.ENDC)
     print(f" 📍 Root: {os.getcwd()}")
     
-    if os.getenv("TELEGRAM_BOT_TOKEN") and os.getenv("TELEGRAM_CHAT_ID"):
+    if os.getenv("TELEGRAM_BOT_TOKEN"):
         print(f" 🔐 Telegram: {Colors.GREEN}Configured{Colors.ENDC}")
     else:
         print(f" 🔐 Telegram: {Colors.FAIL}MISSING IN .ENV{Colors.ENDC}")
@@ -51,7 +51,7 @@ def main_menu():
         print_banner()
         print(" [1] 🚀 START BOT (Live)")
         print(" [2] 🛡️ START BOT (Safe Mode)")
-        print(" [3] 📡 TEST TELEGRAM (Send Message)")
+        print(" [3] 📡 TEST TELEGRAM (Auto-Detect Proxy)")
         print(" [4] 🛠️ RE-BUILD (Update Code)")
         print(" [5] ❌ EXIT")
         print("\n" + Colors.BLUE + "──────────────────────────────────────────────────────────────" + Colors.ENDC)
