@@ -1,32 +1,62 @@
 
-import sys
 import os
+import requests
+import sys
 from dotenv import load_dotenv
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from modules.network.telegram_client import TelegramBot
+# Force load .env
+load_dotenv()
 
-def test():
-    print("\n📡 TESTING TELEGRAM CONNECTION...")
+TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
+
+print("-" * 50)
+print("📡 TELEGRAM CONNECTIVITY TEST")
+print("-" * 50)
+
+if not TOKEN or not CHAT_ID:
+    print("❌ ERROR: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not found in .env")
+    print("   Please check your .env file.")
+    sys.exit(1)
+
+print(f"🔹 Token: {TOKEN[:5]}...{TOKEN[-5:]}")
+print(f"🔹 Chat ID: {CHAT_ID}")
+
+# 1. Check Bot Info
+print("\n[1] Checking Bot Status...")
+try:
+    url = f"https://api.telegram.org/bot{TOKEN}/getMe"
+    resp = requests.get(url, timeout=10)
+    data = resp.json()
     
-    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
-    load_dotenv(env_path)
-    
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    
-    print(f"   Context: .env found at {env_path}")
-    print(f"   Token Loaded: {'YES' if token else 'NO'}")
-    
-    bot = TelegramBot()
-    print("   Attempting to send message...")
-    result = bot.send_message("📡 <b>Test Packet</b>\nOcean Hunter Connectivity Verified.")
-    
-    if result:
-        print("\n   ✅ SUCCESS: Message sent to Telegram.")
+    if data.get("ok"):
+        bot_name = data["result"]["first_name"]
+        print(f"   ✅ Connected as: @{data['result']['username']} ({bot_name})")
     else:
-        print("\n   ❌ FAILED: Check VPN or Token.")
-        
-    input("\nPress Enter to return...")
+        print(f"   ❌ API Error: {data}")
+        sys.exit(1)
+except Exception as e:
+    print(f"   ❌ Connection Failed: {e}")
+    print("   (Check your VPN/Internet)")
+    sys.exit(1)
 
-if __name__ == "__main__":
-    test()
+# 2. Send Test Message
+print("\n[2] Sending Test Message...")
+try:
+    msg = "🔔 OCEAN HUNTER: Connection Successful!\nYour bot is ready to trade."
+    url = f"https://api.telegram.org/bot{TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": msg}
+    
+    resp = requests.post(url, json=payload, timeout=10)
+    data = resp.json()
+    
+    if data.get("ok"):
+        print("   ✅ MESSAGE SENT SUCCESSFULLY!")
+        print("   👉 Check your Telegram app now.")
+    else:
+        print(f"   ❌ Send Failed: {data}")
+
+except Exception as e:
+    print(f"   ❌ Error sending message: {e}")
+
+print("-" * 50)
