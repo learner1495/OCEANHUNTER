@@ -2,168 +2,194 @@
 import os
 import time
 import requests
-import hmac
-import hashlib
-import json
+import statistics
+import math
 from datetime import datetime
 from dotenv import load_dotenv
 
 # Load Environment
 load_dotenv()
-MODE = os.getenv("MODE", "SAFE")  # SAFE or LIVE
+MODE = os.getenv("MODE", "SAFE")
 
-# ════════════════ CONFIGURATION ════════════════
+# ════════════════ STRATEGY CONFIG ════════════════
 SYMBOL = "BTCUSDT"
-TIMEFRAME = "1m"  # For testing
+TIMEFRAME = "1m"       # Use 1m for testing speed (In real production: 15m)
+BB_PERIOD = 20
+BB_STD_DEV = 2.0
 RSI_PERIOD = 14
-RSI_OVERBOUGHT = 70
-RSI_OVERSOLD = 30
-CHECK_INTERVAL = 10  # Seconds
+VOLUME_MA = 20
+ENTRY_THRESHOLD = 70   # Min Score to trigger SIGNAL
 
-# API KEYS
-MEXC_KEY = os.getenv("MEXC_API_KEY")
-MEXC_SECRET = os.getenv("MEXC_SECRET_KEY")
+# API CONFIG
 TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TG_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
-
-# PROXY (Optional - uses what worked in test)
 PROXY_URL = os.getenv("HTTPS_PROXY", "http://127.0.0.1:10809")
-PROXIES = {
-    "http": PROXY_URL,
-    "https": PROXY_URL
-}
-# Try direct first if proxy fails or not needed (based on user test)
-USE_PROXY = True 
+PROXIES = {"http": PROXY_URL, "https": PROXY_URL}
 
-# ════════════════ TELEGRAM MODULE ════════════════
+# ════════════════ TELEGRAM ════════════════
 def send_telegram(msg):
-    if not TG_TOKEN or not TG_CHAT_ID:
-        print("   ❌ Telegram details missing in .env")
-        return
-    
+    if not TG_TOKEN or not TG_CHAT_ID: return
     url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-    payload = {"chat_id": TG_CHAT_ID, "text": msg}
-    
-    # Try Direct First (Since user confirmed it works)
+    payload = {"chat_id": TG_CHAT_ID, "text": msg, "parse_mode": "HTML"}
     try:
-        requests.post(url, json=payload, timeout=5)
-        return
+        requests.post(url, json=payload, timeout=5) # Try Direct
     except:
-        # Fallback to Proxy
         try:
-            requests.post(url, json=payload, proxies=PROXIES, timeout=5)
-        except Exception as e:
-            print(f"   ⚠️ Telegram Fail: {e}")
+            requests.post(url, json=payload, proxies=PROXIES, timeout=5) # Try Proxy
+        except: pass
 
-# ════════════════ MEXC MODULE ════════════════
+# ════════════════ MARKET DATA ════════════════
 def get_market_data():
-    """Fetch candles for RSI calculation"""
+    # Fetch enough candles for BB(20) and RSI(14)
     base_url = "https://api.mexc.com/api/v3/klines"
-    params = {
-        "symbol": SYMBOL,
-        "interval": TIMEFRAME,
-        "limit": RSI_PERIOD + 5
-    }
+    params = {"symbol": SYMBOL, "interval": TIMEFRAME, "limit": 50}
     try:
-        # Try direct
         resp = requests.get(base_url, params=params, timeout=5)
         return resp.json()
     except:
         try:
-            # Try Proxy
             resp = requests.get(base_url, params=params, proxies=PROXIES, timeout=5)
             return resp.json()
-        except Exception as e:
-            print(f"❌ API Error: {e}")
-            return None
+        except: return None
 
 def get_current_price():
-    base_url = "https://api.mexc.com/api/v3/ticker/price"
-    params = {"symbol": SYMBOL}
     try:
-        resp = requests.get(base_url, params=params, timeout=5)
+        url = "https://api.mexc.com/api/v3/ticker/price"
+        resp = requests.get(url, params={"symbol": SYMBOL}, proxies=PROXIES, timeout=3)
         return float(resp.json()['price'])
-    except:
-        return 0.0
+    except: return 0.0
 
-# ════════════════ ANALYSIS MODULE ════════════════
-def calculate_rsi(klines):
-    if not klines or len(klines) < RSI_PERIOD:
-        return 50.0
+# ════════════════ TECHNICAL INDICATORS ════════════════
+def calculate_rsi(prices, period=14):
+    if len(prices) < period + 1: return 50
+    deltas = [prices[i] - prices[i-1] for i in range(1, len(prices))]
+    gains = [d if d > 0 else 0 for d in deltas]
+    losses = [abs(d) if d < 0 else 0 for d in deltas]
     
-    closes = [float(k[4]) for k in klines]
+    avg_gain = sum(gains[-period:]) / period
+    avg_loss = sum(losses[-period:]) / period
     
-    # Simple RSI Calculation
-    gains = []
-    losses = []
-    
-    for i in range(1, len(closes)):
-        delta = closes[i] - closes[i-1]
-        if delta > 0:
-            gains.append(delta)
-            losses.append(0)
-        else:
-            gains.append(0)
-            losses.append(abs(delta))
-            
-    # Slicing to period
-    avg_gain = sum(gains[-RSI_PERIOD:]) / RSI_PERIOD
-    avg_loss = sum(losses[-RSI_PERIOD:]) / RSI_PERIOD
-    
-    if avg_loss == 0:
-        return 100.0
-        
+    if avg_loss == 0: return 100
     rs = avg_gain / avg_loss
-    rsi = 100 - (100 / (1 + rs))
-    return round(rsi, 2)
+    return 100 - (100 / (1 + rs))
+
+def calculate_bb(prices, period=20, std_dev=2.0):
+    if len(prices) < period: return 0, 0, 0
+    slice_data = prices[-period:]
+    sma = sum(slice_data) / period
+    std = statistics.stdev(slice_data)
+    upper = sma + (std * std_dev)
+    lower = sma - (std * std_dev)
+    return upper, sma, lower
+
+def calculate_volume_spike(volumes, period=20):
+    if len(volumes) < period: return False
+    current_vol = volumes[-1]
+    avg_vol = sum(volumes[-period-1:-1]) / period  # Exclude current
+    if avg_vol == 0: return False
+    return current_vol > (1.5 * avg_vol)
+
+# ════════════════ SCORING ENGINE (The Brain) ════════════════
+def analyze_market(klines):
+    if not klines: return None
+    
+    # Extract Data
+    closes = [float(k[4]) for k in klines]
+    volumes = [float(k[5]) for k in klines]
+    opens = [float(k[1]) for k in klines]
+    
+    current_price = closes[-1]
+    
+    # 1. Calculate Indicators
+    rsi = calculate_rsi(closes, RSI_PERIOD)
+    bb_upper, bb_mid, bb_lower = calculate_bb(closes, BB_PERIOD, BB_STD_DEV)
+    vol_spike = calculate_volume_spike(volumes, VOLUME_MA)
+    is_green = closes[-1] > opens[-1]
+    
+    # 2. Calculate Score (Based on ARCHITECTURE.txt [2.2])
+    score = 0
+    reasons = []
+    
+    # Rule A: Technical (RSI < 35 AND Price < BB_Lower) -> 35 pts
+    # Modified slightly for testing: RSI < 40 or Price < Lower
+    if rsi < 40:
+        score += 20
+        reasons.append("RSI Oversold")
+    if current_price < bb_lower:
+        score += 15
+        reasons.append("Below BB Lower")
+        
+    # Rule B: Volume Spike -> 25 pts
+    if vol_spike:
+        score += 25
+        reasons.append("Volume Spike")
+        
+    # Rule C: Momentum (Green Candle) -> 25 pts
+    if is_green:
+        score += 25
+        reasons.append("Momentum Bullish")
+        
+    return {
+        "price": current_price,
+        "rsi": round(rsi, 2),
+        "bb_lower": round(bb_lower, 2),
+        "score": score,
+        "reasons": reasons
+    }
 
 # ════════════════ MAIN LOOP ════════════════
 def main():
     os.system('cls' if os.name == 'nt' else 'clear')
-    print("╔══════════════════════════════════════════╗")
-    print(f"║ 🌊 OCEAN HUNTER: {MODE} MODE             ║")
-    print(f"║ 🎯 Symbol: {SYMBOL} | TF: {TIMEFRAME}           ║")
-    print("╚══════════════════════════════════════════╝")
+    print("╔════════════════════════════════════════════════════╗")
+    print(f"║ 🧠 SMART SNIPER ENGINE: {MODE} MODE              ║")
+    print(f"║ 🎯 Symbol: {SYMBOL:<10} TF: {TIMEFRAME:<5} Threshold: {ENTRY_THRESHOLD} ║")
+    print("╚════════════════════════════════════════════════════╝")
     
-    msg = f"🚀 <b>BOT STARTED</b>\nMode: {MODE}\nSymbol: {SYMBOL}"
-    send_telegram(msg)
-    print("✅ Startup Message sent to Telegram.")
+    send_telegram(f"🧠 <b>SMART SNIPER STARTED</b>\nSymbol: {SYMBOL}")
+    print("\n⏳ Initializing Indicators (20 candles)...")
     
-    print("\n⏳ Waiting for market data...")
+    last_score = 0
     
     try:
         while True:
-            # 1. Get Data
-            klines = get_market_data()
-            price = get_current_price()
-            
-            if klines and price > 0:
-                # 2. Analyze
-                rsi = calculate_rsi(klines)
+            data = get_market_data()
+            if data:
+                analysis = analyze_market(data)
                 
-                # 3. Display Status
+                # Colors
                 timestamp = datetime.now().strftime("%H:%M:%S")
+                score = analysis['score']
+                rsi = analysis['rsi']
+                price = analysis['price']
                 
-                status_color = "\033[92m" if rsi < 30 else "\033[91m" if rsi > 70 else "\033[97m"
-                print(f"[{timestamp}] Price: {price} | RSI: {status_color}{rsi}\033[0m")
+                # Dynamic Color for Score
+                s_color = "\033[92m" if score >= ENTRY_THRESHOLD else "\033[93m" if score >= 50 else "\033[90m"
+                r_color = "\033[91m" if rsi > 70 else "\033[92m" if rsi < 30 else "\033[97m"
                 
-                # 4. Strategy Logic (Simulation for now)
-                if rsi < RSI_OVERSOLD:
-                    print("    🟢 SIGNAL: POTENTIAL BUY (Oversold)")
-                    # if MODE == 'LIVE': execute_trade(...)
-                    
-                elif rsi > RSI_OVERBOUGHT:
-                    print("    🔴 SIGNAL: POTENTIAL SELL (Overbought)")
-                    # if MODE == 'LIVE': execute_trade(...)
+                print(f"[{timestamp}] 💵 {price} | RSI: {r_color}{rsi:<5}\033[0m | Score: {s_color}{score}/100\033[0m")
+                
+                if analysis['reasons']:
+                    print(f"            └─ Detected: {', '.join(analysis['reasons'])}")
+
+                # TRIGGER LOGIC
+                if score >= ENTRY_THRESHOLD and last_score < ENTRY_THRESHOLD:
+                    msg = (f"🚀 <b>ENTRY SIGNAL DETECTED</b>\n"
+                           f"Symbol: {SYMBOL}\n"
+                           f"Score: {score}/100\n"
+                           f"Price: {price}\n"
+                           f"Reasons: {', '.join(analysis['reasons'])}")
+                    print(f"\n✅ SENDING ALERT: Score {score}\n")
+                    send_telegram(msg)
+                
+                last_score = score
 
             else:
-                print("⚠️  Data fetch failed, retrying...")
-
-            time.sleep(CHECK_INTERVAL)
+                print("⚠️  Network/Proxy glitch... retrying", end='\r')
+                
+            time.sleep(10) # Update every 10s
 
     except KeyboardInterrupt:
-        print("\n🛑 Bot Stopped by user.")
-        send_telegram("🛑 <b>BOT STOPPED</b>")
+        print("\n🛑 Bot Stopped.")
 
 if __name__ == "__main__":
     main()
