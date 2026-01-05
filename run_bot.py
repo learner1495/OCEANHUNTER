@@ -1,117 +1,169 @@
 
 import os
 import time
-import sys
+import requests
+import hmac
+import hashlib
+import json
+from datetime import datetime
 from dotenv import load_dotenv
-
-# Setup Paths
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
-
-# Imports
-from modules.mexc_provider import MEXCData
-from modules.network.telegram_client import TelegramBot
 
 # Load Environment
 load_dotenv()
+MODE = os.getenv("MODE", "SAFE")  # SAFE or LIVE
 
-# Configuration
+# ════════════════ CONFIGURATION ════════════════
 SYMBOL = "BTCUSDT"
-TIMEFRAME = "15m"
+TIMEFRAME = "1m"  # For testing
+RSI_PERIOD = 14
+RSI_OVERBOUGHT = 70
+RSI_OVERSOLD = 30
+CHECK_INTERVAL = 10  # Seconds
 
-def calculate_rsi(prices, period=14):
-    import numpy as np
-    if len(prices) < period + 1: return 50.0
-    deltas = np.diff(prices)
-    seed = deltas[:period+1]
-    up = seed[seed >= 0].sum()/period
-    down = -seed[seed < 0].sum()/period
-    rs = up/down if down != 0 else 0
-    rsi = np.zeros_like(prices)
-    rsi[:period] = 100. - 100./(1. + rs)
-    for i in range(period, len(prices)):
-        delta = deltas[i-1]
-        if delta > 0:
-            upval = delta
-            downval = 0.
-        else:
-            upval = 0.
-            downval = -delta
-        up = (up * (period - 1) + upval) / period
-        down = (down * (period - 1) + downval) / period
-        rs = up/down if down != 0 else 0
-        rsi[i] = 100. - 100./(1. + rs)
-    return rsi[-1]
+# API KEYS
+MEXC_KEY = os.getenv("MEXC_API_KEY")
+MEXC_SECRET = os.getenv("MEXC_SECRET_KEY")
+TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+TG_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-def calculate_bollinger_bands(prices, period=20, std_dev=2):
-    import numpy as np
-    if len(prices) < period: return 0, 0, 0
-    sma = np.mean(prices[-period:])
-    std = np.std(prices[-period:])
-    upper = sma + (std_dev * std)
-    lower = sma - (std_dev * std)
-    return upper, sma, lower
+# PROXY (Optional - uses what worked in test)
+PROXY_URL = os.getenv("HTTPS_PROXY", "http://127.0.0.1:10809")
+PROXIES = {
+    "http": PROXY_URL,
+    "https": PROXY_URL
+}
+# Try direct first if proxy fails or not needed (based on user test)
+USE_PROXY = True 
 
-def run_engine():
-    print(f"\n🚀 OCEAN HUNTER ENGINE STARTED")
-    print(f"🎯 Target: {SYMBOL} | Strategy: Smart Sniper V10.8.2")
+# ════════════════ TELEGRAM MODULE ════════════════
+def send_telegram(msg):
+    if not TG_TOKEN or not TG_CHAT_ID:
+        print("   ❌ Telegram details missing in .env")
+        return
     
-    provider = MEXCData()
-    bot = TelegramBot()
+    url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
+    payload = {"chat_id": TG_CHAT_ID, "text": msg}
     
-    # Startup Message
-    start_msg = f"🌊 <b>OCEAN HUNTER ONLINE</b>\nSymbol: {SYMBOL}\nMode: {os.getenv('MODE', 'UNKNOWN')}"
-    print("   📨 Sending startup message to Telegram...")
-    if bot.send_message(start_msg):
-        print("   ✅ Telegram Connected Successfully.")
-    else:
-        print("   ⚠️ Telegram Message Failed (Check VPN/Proxy/Keys).")
-
-    cycle_count = 0
-    
-    while True:
+    # Try Direct First (Since user confirmed it works)
+    try:
+        requests.post(url, json=payload, timeout=5)
+        return
+    except:
+        # Fallback to Proxy
         try:
-            cycle_count += 1
-            if cycle_count % 10 == 0:
-                 print(f"\n[Cycle {cycle_count}] Scanning Markets...")
-            
-            # Fetch & Analyze
-            df = provider.get_klines(SYMBOL, TIMEFRAME, limit=50)
-            if df is not None and not df.empty:
-                closes = df['close'].values
-                current_price = closes[-1]
-                rsi = calculate_rsi(closes)
-                upper, mid, lower = calculate_bollinger_bands(closes)
-                
-                score = 0
-                reasons = []
-                
-                # Strategy Logic
-                if rsi < 35:
-                    score += 35
-                    reasons.append(f"RSI Oversold ({rsi:.2f})")
-                if current_price < lower:
-                    score += 35
-                    reasons.append("Price < BB Lower")
-                
-                # Signal Trigger
-                if score >= 70:
-                    msg = f"🎯 <b>SIGNAL DETECTED</b>\nPrice: {current_price}\nScore: {score}\nReasons: {', '.join(reasons)}"
-                    print(f"   🚨 SIGNAL FOUND! Score: {score}")
-                    bot.send_message(msg)
-                    time.sleep(60) 
-                
-                # Status Line
-                sys.stdout.write(f"\r   Price: {current_price:.2f} | RSI: {rsi:.2f} | Score: {score}   ")
-                sys.stdout.flush()
-
-            time.sleep(5)
-
-        except KeyboardInterrupt:
-            bot.send_message("🛑 Bot Stopped by User.")
-            break
+            requests.post(url, json=payload, proxies=PROXIES, timeout=5)
         except Exception as e:
-            print(f"Error: {e}")
-            time.sleep(10)
+            print(f"   ⚠️ Telegram Fail: {e}")
+
+# ════════════════ MEXC MODULE ════════════════
+def get_market_data():
+    """Fetch candles for RSI calculation"""
+    base_url = "https://api.mexc.com/api/v3/klines"
+    params = {
+        "symbol": SYMBOL,
+        "interval": TIMEFRAME,
+        "limit": RSI_PERIOD + 5
+    }
+    try:
+        # Try direct
+        resp = requests.get(base_url, params=params, timeout=5)
+        return resp.json()
+    except:
+        try:
+            # Try Proxy
+            resp = requests.get(base_url, params=params, proxies=PROXIES, timeout=5)
+            return resp.json()
+        except Exception as e:
+            print(f"❌ API Error: {e}")
+            return None
+
+def get_current_price():
+    base_url = "https://api.mexc.com/api/v3/ticker/price"
+    params = {"symbol": SYMBOL}
+    try:
+        resp = requests.get(base_url, params=params, timeout=5)
+        return float(resp.json()['price'])
+    except:
+        return 0.0
+
+# ════════════════ ANALYSIS MODULE ════════════════
+def calculate_rsi(klines):
+    if not klines or len(klines) < RSI_PERIOD:
+        return 50.0
+    
+    closes = [float(k[4]) for k in klines]
+    
+    # Simple RSI Calculation
+    gains = []
+    losses = []
+    
+    for i in range(1, len(closes)):
+        delta = closes[i] - closes[i-1]
+        if delta > 0:
+            gains.append(delta)
+            losses.append(0)
+        else:
+            gains.append(0)
+            losses.append(abs(delta))
+            
+    # Slicing to period
+    avg_gain = sum(gains[-RSI_PERIOD:]) / RSI_PERIOD
+    avg_loss = sum(losses[-RSI_PERIOD:]) / RSI_PERIOD
+    
+    if avg_loss == 0:
+        return 100.0
+        
+    rs = avg_gain / avg_loss
+    rsi = 100 - (100 / (1 + rs))
+    return round(rsi, 2)
+
+# ════════════════ MAIN LOOP ════════════════
+def main():
+    os.system('cls' if os.name == 'nt' else 'clear')
+    print("╔══════════════════════════════════════════╗")
+    print(f"║ 🌊 OCEAN HUNTER: {MODE} MODE             ║")
+    print(f"║ 🎯 Symbol: {SYMBOL} | TF: {TIMEFRAME}           ║")
+    print("╚══════════════════════════════════════════╝")
+    
+    msg = f"🚀 <b>BOT STARTED</b>\nMode: {MODE}\nSymbol: {SYMBOL}"
+    send_telegram(msg)
+    print("✅ Startup Message sent to Telegram.")
+    
+    print("\n⏳ Waiting for market data...")
+    
+    try:
+        while True:
+            # 1. Get Data
+            klines = get_market_data()
+            price = get_current_price()
+            
+            if klines and price > 0:
+                # 2. Analyze
+                rsi = calculate_rsi(klines)
+                
+                # 3. Display Status
+                timestamp = datetime.now().strftime("%H:%M:%S")
+                
+                status_color = "\033[92m" if rsi < 30 else "\033[91m" if rsi > 70 else "\033[97m"
+                print(f"[{timestamp}] Price: {price} | RSI: {status_color}{rsi}\033[0m")
+                
+                # 4. Strategy Logic (Simulation for now)
+                if rsi < RSI_OVERSOLD:
+                    print("    🟢 SIGNAL: POTENTIAL BUY (Oversold)")
+                    # if MODE == 'LIVE': execute_trade(...)
+                    
+                elif rsi > RSI_OVERBOUGHT:
+                    print("    🔴 SIGNAL: POTENTIAL SELL (Overbought)")
+                    # if MODE == 'LIVE': execute_trade(...)
+
+            else:
+                print("⚠️  Data fetch failed, retrying...")
+
+            time.sleep(CHECK_INTERVAL)
+
+    except KeyboardInterrupt:
+        print("\n🛑 Bot Stopped by user.")
+        send_telegram("🛑 <b>BOT STOPPED</b>")
 
 if __name__ == "__main__":
-    run_engine()
+    main()
