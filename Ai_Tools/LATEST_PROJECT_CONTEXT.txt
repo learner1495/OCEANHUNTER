@@ -1,4 +1,4 @@
-GENERATED: 2026-01-05 12:06:13
+GENERATED: 2026-01-05 20:39:11
 VERSION: 3.1 (Phase 1: Virtual Wallet)
 
 PROJECT STRUCTURE:
@@ -20,6 +20,7 @@ OCEANHUNTER/
     split_test.py
     state.json
     test_exchange.py
+    test_telegram_conn.py
     Ai_Tools/
         ARCHITECTURE.txt
         build.py
@@ -47,6 +48,7 @@ OCEANHUNTER/
             nobitex_api.py
             rate_limiter.py
             telegram_bot.py
+            telegram_client.py
             __init__.py
         security/
             __init__.py
@@ -796,46 +798,121 @@ File: run_bot.py
 ====================
 
 import os
-import sys
 import time
-import requests
+import sys
 from dotenv import load_dotenv
 
-sys.path.append(os.getcwd())
-from data.mexc_provider import MEXCProvider
+# Setup Paths
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
+# Imports
+from modules.mexc_provider import MEXCData
+from modules.network.telegram_client import TelegramBot
+
+# Load Environment
 load_dotenv()
-MODE = os.getenv("MODE", "PAPER").upper()
-SYMBOL = "SOLUSDT"
-TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
-TG_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-def send_telegram(msg):
-    if not TG_TOKEN or not TG_CHAT_ID: return
-    try:
-        url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
-        payload = {"chat_id": TG_CHAT_ID, "text": msg, "parse_mode": "HTML"}
-        requests.post(url, json=payload, timeout=5)
-    except: pass
+# Configuration
+SYMBOL = "BTCUSDT"
+TIMEFRAME = "15m"
 
-def main():
-    print(f" OCEAN HUNTER ENGINE | Mode: {MODE}")
-    print("=" * 40)
-    send_telegram(f"▶️ <b>Engine Started</b> [{MODE}]")
+def calculate_rsi(prices, period=14):
+    import numpy as np
+    if len(prices) < period + 1: return 50.0
+    deltas = np.diff(prices)
+    seed = deltas[:period+1]
+    up = seed[seed >= 0].sum()/period
+    down = -seed[seed < 0].sum()/period
+    rs = up/down if down != 0 else 0
+    rsi = np.zeros_like(prices)
+    rsi[:period] = 100. - 100./(1. + rs)
+    for i in range(period, len(prices)):
+        delta = deltas[i-1]
+        if delta > 0:
+            upval = delta
+            downval = 0.
+        else:
+            upval = 0.
+            downval = -delta
+        up = (up * (period - 1) + upval) / period
+        down = (down * (period - 1) + downval) / period
+        rs = up/down if down != 0 else 0
+        rsi[i] = 100. - 100./(1. + rs)
+    return rsi[-1]
+
+def calculate_bollinger_bands(prices, period=20, std_dev=2):
+    import numpy as np
+    if len(prices) < period: return 0, 0, 0
+    sma = np.mean(prices[-period:])
+    std = np.std(prices[-period:])
+    upper = sma + (std_dev * std)
+    lower = sma - (std_dev * std)
+    return upper, sma, lower
+
+def run_engine():
+    print(f"\n🚀 OCEAN HUNTER ENGINE STARTED")
+    print(f"🎯 Target: {SYMBOL} | Strategy: Smart Sniper V10.8.2")
     
-    provider = MEXCProvider()
-    print(f"   Listening on {SYMBOL}...")
+    provider = MEXCData()
+    bot = TelegramBot()
     
-    try:
-        while True:
-            print(f"   [{time.strftime('%H:%M:%S')}] Heartbeat OK - Scanning...")
+    # Startup Message
+    start_msg = f"🌊 <b>OCEAN HUNTER ONLINE</b>\nSymbol: {SYMBOL}\nMode: {os.getenv('MODE', 'UNKNOWN')}"
+    print("   📨 Sending startup message to Telegram...")
+    if bot.send_message(start_msg):
+        print("   ✅ Telegram Connected Successfully.")
+    else:
+        print("   ⚠️ Telegram Message Failed (Check VPN/Proxy/Keys).")
+
+    cycle_count = 0
+    
+    while True:
+        try:
+            cycle_count += 1
+            if cycle_count % 10 == 0:
+                 print(f"\n[Cycle {cycle_count}] Scanning Markets...")
+            
+            # Fetch & Analyze
+            df = provider.get_klines(SYMBOL, TIMEFRAME, limit=50)
+            if df is not None and not df.empty:
+                closes = df['close'].values
+                current_price = closes[-1]
+                rsi = calculate_rsi(closes)
+                upper, mid, lower = calculate_bollinger_bands(closes)
+                
+                score = 0
+                reasons = []
+                
+                # Strategy Logic
+                if rsi < 35:
+                    score += 35
+                    reasons.append(f"RSI Oversold ({rsi:.2f})")
+                if current_price < lower:
+                    score += 35
+                    reasons.append("Price < BB Lower")
+                
+                # Signal Trigger
+                if score >= 70:
+                    msg = f"🎯 <b>SIGNAL DETECTED</b>\nPrice: {current_price}\nScore: {score}\nReasons: {', '.join(reasons)}"
+                    print(f"   🚨 SIGNAL FOUND! Score: {score}")
+                    bot.send_message(msg)
+                    time.sleep(60) 
+                
+                # Status Line
+                sys.stdout.write(f"\r   Price: {current_price:.2f} | RSI: {rsi:.2f} | Score: {score}   ")
+                sys.stdout.flush()
+
+            time.sleep(5)
+
+        except KeyboardInterrupt:
+            bot.send_message("🛑 Bot Stopped by User.")
+            break
+        except Exception as e:
+            print(f"Error: {e}")
             time.sleep(10)
-    except KeyboardInterrupt:
-        print("\nSTOPPING...")
-        send_telegram("🛑 <b>Engine Stopped</b>")
 
 if __name__ == "__main__":
-    main()
+    run_engine()
 
 
 ====================
@@ -1676,6 +1753,43 @@ def main():
 
 if __name__ == "__main__":
     main()
+
+
+====================
+File: test_telegram_conn.py
+====================
+
+import sys
+import os
+from dotenv import load_dotenv
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from modules.network.telegram_client import TelegramBot
+
+def test():
+    print("\n📡 TESTING TELEGRAM CONNECTION...")
+    
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+    load_dotenv(env_path)
+    
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    
+    print(f"   Context: .env found at {env_path}")
+    print(f"   Token Loaded: {'YES' if token else 'NO'}")
+    
+    bot = TelegramBot()
+    print("   Attempting to send message...")
+    result = bot.send_message("📡 <b>Test Packet</b>\nOcean Hunter Connectivity Verified.")
+    
+    if result:
+        print("\n   ✅ SUCCESS: Message sent to Telegram.")
+    else:
+        print("\n   ❌ FAILED: Check VPN or Token.")
+        
+    input("\nPress Enter to return...")
+
+if __name__ == "__main__":
+    test()
 
 
 ====================
@@ -3142,74 +3256,290 @@ All 15 scenarios PASS → Paper Mode OK → LIVE_TEST eligible
 ====================
 File: Ai_Tools\build.py
 ====================
-# AI_Tools/build.py — Maintenance Mode: Context & Git Sync Only
+# AI_Tools/build.py — Phase 11: Light Build (No Re-install)
 # ═══════════════════════════════════════════════════════════════
-# Ref: OCEAN-SYNC-ONLY
+# Ref: PHASE-11-LIGHT-BUILD
 # ═══════════════════════════════════════════════════════════════
 
 import os
 import sys
-from datetime import datetime
 
-# تلاش برای ایمپورت ماژول‌های ورک‌فلو
+# ═══════════════════════════════════════════════════════════════
+# 1. SETUP PATHS & UTILS (No External Deps)
+# ═══════════════════════════════════════════════════════════════
+
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+
+def load_env_manual(env_path):
+    """Reads .env without needing the 'python-dotenv' library installed on host."""
+    env_vars = {}
+    if os.path.exists(env_path):
+        with open(env_path, 'r', encoding='utf-8') as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith('#') or '=' not in line:
+                    continue
+                key, val = line.split('=', 1)
+                env_vars[key.strip()] = val.strip().strip("'").strip('"')
+    return env_vars
+
+# Load Workflow Modules (If present)
 try:
     import context_gen
     import setup_git
-except ImportError as e:
-    print(f"❌ Critical Error: Missing workflow modules! {e}")
-    sys.exit(1)
+except ImportError:
+    pass
 
 # ═══════════════════════════════════════════════════════════════
-# EXECUTION
+# 2. FILE TEMPLATES (The code to be injected)
 # ═══════════════════════════════════════════════════════════════
 
-def force_update():
-    print("="*60)
-    print("      OCEAN HUNTER | FORCE CONTEXT UPDATE & GIT SYNC")
-    print("="*60)
-    
-    # 1. Update Context
-    print("\n[1/2] 🧠 Regenerating Project Context...")
-    try:
-        # فراخوانی مستقیم تابع تولید کانتکست
-        context_gen.create_context_file()
+TELEGRAM_CLIENT_CODE = r'''
+import os
+import requests
+from dotenv import load_dotenv
+
+# Ensure env is loaded
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env'))
+
+class TelegramBot:
+    def __init__(self):
+        self.token = os.getenv("TELEGRAM_BOT_TOKEN")
+        self.chat_id = os.getenv("TELEGRAM_CHAT_ID")
+        self.base_url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+
+    def send_message(self, message):
+        if not self.token or not self.chat_id:
+            print(f"🔕 Telegram Auth Missing (Check .env).")
+            return False
+
+        payload = {
+            "chat_id": self.chat_id,
+            "text": message,
+            "parse_mode": "HTML"
+        }
         
-        # بررسی اینکه آیا فایل واقعا آپدیت شده است؟
-        context_path = os.path.join(os.path.dirname(__file__), "LATEST_PROJECT_CONTEXT.txt")
-        if os.path.exists(context_path):
-            t = datetime.fromtimestamp(os.path.getmtime(context_path))
-            print(f"      ✅ Context File Updated Successfully.")
-            print(f"      db Path: {context_path}")
-            print(f"      🕒 Timestamp: {t}")
+        try:
+            # Using verify=False to avoid SSL issues on some local proxies, can be removed in prod
+            response = requests.post(self.base_url, json=payload, timeout=10)
+            if response.status_code == 200:
+                return True
+            else:
+                print(f"❌ TG Error {response.status_code}: {response.text}")
+                return False
+        except Exception as e:
+            print(f"❌ TG Connection Error: {e}")
+            return False
+'''
+
+RUN_BOT_CODE = r'''
+import os
+import time
+import sys
+from dotenv import load_dotenv
+
+# Setup Paths
+sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+
+# Imports
+from modules.mexc_provider import MEXCData
+from modules.network.telegram_client import TelegramBot
+
+# Load Environment
+load_dotenv()
+
+# Configuration
+SYMBOL = "BTCUSDT"
+TIMEFRAME = "15m"
+
+def calculate_rsi(prices, period=14):
+    import numpy as np
+    if len(prices) < period + 1: return 50.0
+    deltas = np.diff(prices)
+    seed = deltas[:period+1]
+    up = seed[seed >= 0].sum()/period
+    down = -seed[seed < 0].sum()/period
+    rs = up/down if down != 0 else 0
+    rsi = np.zeros_like(prices)
+    rsi[:period] = 100. - 100./(1. + rs)
+    for i in range(period, len(prices)):
+        delta = deltas[i-1]
+        if delta > 0:
+            upval = delta
+            downval = 0.
         else:
-            print("      ⚠️ Warning: File generated but not found at expected path.")
-            
-    except Exception as e:
-        print(f"      ❌ Context Generation Failed: {e}")
-        return # اگر کانتکست ساخته نشد، گیت سینک نکنیم بهتر است
+            upval = 0.
+            downval = -delta
+        up = (up * (period - 1) + upval) / period
+        down = (down * (period - 1) + downval) / period
+        rs = up/down if down != 0 else 0
+        rsi[i] = 100. - 100./(1. + rs)
+    return rsi[-1]
 
-    # 2. Git Sync
-    print("\n[2/2] 🐙 Syncing with GitHub...")
-    try:
-        # بررسی وجود پوشه گیت
-        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        if not os.path.exists(os.path.join(root, ".git")):
-            print("      ⚙️ Initializing Git first...")
-            setup_git.setup()
+def calculate_bollinger_bands(prices, period=20, std_dev=2):
+    import numpy as np
+    if len(prices) < period: return 0, 0, 0
+    sma = np.mean(prices[-period:])
+    std = np.std(prices[-period:])
+    upper = sma + (std_dev * std)
+    lower = sma - (std_dev * std)
+    return upper, sma, lower
+
+def run_engine():
+    print(f"\n🚀 OCEAN HUNTER ENGINE STARTED")
+    print(f"🎯 Target: {SYMBOL} | Strategy: Smart Sniper V10.8.2")
+    
+    provider = MEXCData()
+    bot = TelegramBot()
+    
+    # Startup Message
+    start_msg = f"🌊 <b>OCEAN HUNTER ONLINE</b>\nSymbol: {SYMBOL}\nMode: {os.getenv('MODE', 'UNKNOWN')}"
+    print("   📨 Sending startup message to Telegram...")
+    if bot.send_message(start_msg):
+        print("   ✅ Telegram Connected Successfully.")
+    else:
+        print("   ⚠️ Telegram Message Failed (Check VPN/Proxy/Keys).")
+
+    cycle_count = 0
+    
+    while True:
+        try:
+            cycle_count += 1
+            if cycle_count % 10 == 0:
+                 print(f"\n[Cycle {cycle_count}] Scanning Markets...")
             
-        timestamp = datetime.now().strftime('%Y-%m-%d %H:%M')
-        commit_msg = f"Manual Sync: Preparation for Cloud Review {timestamp}"
-        
-        setup_git.sync(commit_msg)
-        print("      ✅ Git Push Complete.")
-        
-    except Exception as e:
-        print(f"      ❌ Git Sync Failed: {e}")
+            # Fetch & Analyze
+            df = provider.get_klines(SYMBOL, TIMEFRAME, limit=50)
+            if df is not None and not df.empty:
+                closes = df['close'].values
+                current_price = closes[-1]
+                rsi = calculate_rsi(closes)
+                upper, mid, lower = calculate_bollinger_bands(closes)
+                
+                score = 0
+                reasons = []
+                
+                # Strategy Logic
+                if rsi < 35:
+                    score += 35
+                    reasons.append(f"RSI Oversold ({rsi:.2f})")
+                if current_price < lower:
+                    score += 35
+                    reasons.append("Price < BB Lower")
+                
+                # Signal Trigger
+                if score >= 70:
+                    msg = f"🎯 <b>SIGNAL DETECTED</b>\nPrice: {current_price}\nScore: {score}\nReasons: {', '.join(reasons)}"
+                    print(f"   🚨 SIGNAL FOUND! Score: {score}")
+                    bot.send_message(msg)
+                    time.sleep(60) 
+                
+                # Status Line
+                sys.stdout.write(f"\r   Price: {current_price:.2f} | RSI: {rsi:.2f} | Score: {score}   ")
+                sys.stdout.flush()
+
+            time.sleep(5)
+
+        except KeyboardInterrupt:
+            bot.send_message("🛑 Bot Stopped by User.")
+            break
+        except Exception as e:
+            print(f"Error: {e}")
+            time.sleep(10)
 
 if __name__ == "__main__":
-    force_update()
-    print("\n✅ OPERATION FINISHED.")
-    input("Press Enter to exit...")
+    run_engine()
+'''
+
+TESTER_CODE = r'''
+import sys
+import os
+from dotenv import load_dotenv
+
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from modules.network.telegram_client import TelegramBot
+
+def test():
+    print("\n📡 TESTING TELEGRAM CONNECTION...")
+    
+    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
+    load_dotenv(env_path)
+    
+    token = os.getenv("TELEGRAM_BOT_TOKEN")
+    
+    print(f"   Context: .env found at {env_path}")
+    print(f"   Token Loaded: {'YES' if token else 'NO'}")
+    
+    bot = TelegramBot()
+    print("   Attempting to send message...")
+    result = bot.send_message("📡 <b>Test Packet</b>\nOcean Hunter Connectivity Verified.")
+    
+    if result:
+        print("\n   ✅ SUCCESS: Message sent to Telegram.")
+    else:
+        print("\n   ❌ FAILED: Check VPN or Token.")
+        
+    input("\nPress Enter to return...")
+
+if __name__ == "__main__":
+    test()
+'''
+
+# ═══════════════════════════════════════════════════════════════
+# 3. MAIN BUILD LOGIC
+# ═══════════════════════════════════════════════════════════════
+
+def main():
+    print("="*60)
+    print("      OCEAN HUNTER | PHASE 11: TELEGRAM LINKUP (LIGHT)")
+    print("="*60)
+
+    # 1. READ ENV MANUALLY (Just to check, no dependency needed)
+    env_path = os.path.join(PROJECT_ROOT, ".env")
+    env_vars = load_env_manual(env_path)
+    token = env_vars.get("TELEGRAM_BOT_TOKEN")
+    
+    if token:
+        print(f"✅ Environment Config Detected.")
+    else:
+        print("⚠️ Warning: TELEGRAM_BOT_TOKEN not found in .env (Bot may fail).")
+
+    # 2. GENERATE FILES
+    print("\n🛠️ [2/3] Generating code files...")
+    
+    # Telegram Client
+    net_dir = os.path.join(PROJECT_ROOT, "modules", "network")
+    os.makedirs(net_dir, exist_ok=True)
+    with open(os.path.join(net_dir, "telegram_client.py"), "w", encoding="utf-8") as f:
+        f.write(TELEGRAM_CLIENT_CODE)
+    print("   -> Created modules/network/telegram_client.py")
+    
+    # Run Bot
+    with open(os.path.join(PROJECT_ROOT, "run_bot.py"), "w", encoding="utf-8") as f:
+        f.write(RUN_BOT_CODE)
+    print("   -> Created run_bot.py")
+
+    # Tester
+    with open(os.path.join(PROJECT_ROOT, "test_telegram_conn.py"), "w", encoding="utf-8") as f:
+        f.write(TESTER_CODE)
+    print("   -> Created test_telegram_conn.py")
+
+    # 3. SYNC
+    print("\n🐙 [3/3] Syncing to Git...")
+    if 'context_gen' in sys.modules and 'setup_git' in sys.modules:
+        try:
+            context_gen.create_context_file()
+            setup_git.sync("Phase 11: Telegram Integration (Light Build)")
+        except Exception as e:
+            print(f"   ⚠️ Git Sync Warning: {e}")
+    else:
+        print("   ⚠️ Workflow modules missing. Skipping Git sync.")
+
+if __name__ == "__main__":
+    main()
+    print("\n✅ BUILD COMPLETE.")
+    print("👉 Now run the Dashboard (Option 3) to test Telegram.")
 
 
 ====================
@@ -3855,7 +4185,212 @@ PART 10: FINAL AUTHORITY (قوانین 42-44)
 ################################################################################
 #END OF WORKFLOW.txt                               #
 #VERSION 3.1 | 44 RULES | 10 PARTS                       #
-################################################################################
+###############################################################################
+
+══════════════════════════════════════════════════════════
+==========================
+# AI_Tools/build.py — Template V3.4
+========================== ═══════════════════════════════════════════════════════════════
+# 9 مرحله با Error Handling کامل — بدون کرش
+# ═══════════════════════════════════════════════════════════════
+
+import os
+import sys
+import subprocess
+import socket
+from datetime import datetime
+
+# ═══ Import ماژول‌های داخلی ═══
+import context_gen
+import setup_git
+
+# ═══════════════════════════════════════════════════════════════
+# PATHS
+# ═══════════════════════════════════════════════════════════════
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
+ROOT = os.path.dirname(SCRIPT_DIR)
+VENV_PATH = os.path.join(ROOT, ".venv")
+VENV_PYTHON = os.path.join(VENV_PATH, "Scripts", "python.exe") if sys.platform == "win32" else os.path.join(VENV_PATH, "bin", "python")
+
+# ═══════════════════════════════════════════════════════════════
+# ⭐ CUSTOMIZE
+# ═══════════════════════════════════════════════════════════════
+FOLDERS = []
+NEW_FILES = {}
+MODIFY_FILES = {}
+MAIN_FILE = "main.py"
+
+# ═══════════════════════════════════════════════════════════════
+# ERROR TRACKING
+# ═══════════════════════════════════════════════════════════════
+errors = []
+
+def log_error(step, error):
+    """ثبت خطا بدون توقف"""
+    errors.append(f"[{step}] {error}")
+    print(f"      ⚠️ Error: {error}")
+
+# ═══════════════════════════════════════════════════════════════
+# STEPS 1-6
+# ═══════════════════════════════════════════════════════════════
+def step1_system():
+    print("\n[1/9] 🌐 System Check...")
+    try:
+        socket.create_connection(("8.8.8.8", 53), timeout=3)
+        print("      ✅ Internet OK")
+    except Exception as e:
+        log_error("Step1", f"No internet - {e}")
+
+def step2_venv():
+    print("\n[2/9] 🐍 Virtual Environment...")
+    try:
+        if os.path.exists(VENV_PYTHON):
+            print("      ✅ Exists")
+            return
+        subprocess.run([sys.executable, "-m", "venv", VENV_PATH], check=True)
+        print("      ✅ Created")
+    except Exception as e:
+        log_error("Step2", e)
+
+def step3_deps():
+    print("\n[3/9] 📦 Dependencies...")
+    try:
+        req = os.path.join(ROOT, "requirements.txt")
+        if not os.path.exists(req):
+            print("      ℹ️ No requirements.txt")
+            return
+        subprocess.run([VENV_PYTHON, "-m", "pip", "install", "-r", req], 
+                      capture_output=True, check=True)
+        print("      ✅ Installed")
+    except Exception as e:
+        log_error("Step3", e)
+
+def step4_folders():
+    print("\n[4/9] 📁 Folders...")
+    try:
+        if not FOLDERS:
+            print("      ℹ️ None defined")
+            return
+        for f in FOLDERS:
+            path = os.path.join(ROOT, f)
+            if not os.path.exists(path):
+                os.makedirs(path)
+                print(f"      ✅ Created: {f}/")
+    except Exception as e:
+        log_error("Step4", e)
+
+def step5_new_files():
+    print("\n[5/9] 📝 New Files...")
+    try:
+        if not NEW_FILES:
+            print("      ℹ️ None defined")
+            return
+        for path, content in NEW_FILES.items():
+            full = os.path.join(ROOT, path)
+            parent = os.path.dirname(full)
+            if parent and not os.path.exists(parent):
+                os.makedirs(parent)
+            with open(full, "w", encoding="utf-8") as f:
+                f.write(content)
+            print(f"      ✅ Created: {path}")
+    except Exception as e:
+        log_error("Step5", e)
+
+def step6_modify():
+    print("\n[6/9] ✏️ Modify Files...")
+    try:
+        if not MODIFY_FILES:
+            print("      ℹ️ None defined")
+            return
+        for path, content in MODIFY_FILES.items():
+            full = os.path.join(ROOT, path)
+            with open(full, "w", encoding="utf-8") as f:
+                f.write(content)
+            print(f"      ✏️ Modified: {path}")
+    except Exception as e:
+        log_error("Step6", e)
+
+# ═══════════════════════════════════════════════════════════════
+# MAIN
+# ═══════════════════════════════════════════════════════════════
+def main():
+    start_time = datetime.now()
+    
+    print("\n" + "═" * 50)
+    print(f"🔧 BUILD V3.4 | {os.path.basename(ROOT)}")
+    print(f"⏰ Started: {start_time.strftime('%H:%M:%S')}")
+    print("═" * 50)
+
+    try:
+        # ─── مراحل 1-6: Setup ───
+        step1_system()
+        step2_venv()
+        step3_deps()
+        step4_folders()
+        step5_new_files()
+        step6_modify()
+
+        # ─── مرحله 7: Context ───
+        print("\n[7/9] 📋 Context Generation...")
+        try:
+            context_gen.create_context_file()
+            print("      ✅ Context created")
+        except Exception as e:
+            log_error("Step7-Context", e)
+
+        # ─── مرحله 8: Git ───
+        print("\n[8/9] 🐙 Git...")
+        try:
+            setup_git.setup()
+            setup_git.sync(f"Build: {start_time.strftime('%Y-%m-%d %H:%M')}")
+            print("      ✅ Git synced")
+        except Exception as e:
+            log_error("Step8-Git", e)
+
+        # ─── مرحله 9: Launch ───
+        print("\n[9/9] 🚀 Launch...")
+        try:
+            main_path = os.path.join(ROOT, MAIN_FILE)
+            if os.path.exists(main_path):
+                print("=" * 40)
+                subprocess.run([VENV_PYTHON, main_path], cwd=ROOT)
+            else:
+                print(f"      ℹ️ No {MAIN_FILE}")
+        except Exception as e:
+            log_error("Step9-Launch", e)
+
+    except KeyboardInterrupt:
+        print("\n\n⛔ Build cancelled by user")
+        errors.append("KeyboardInterrupt")
+
+    except Exception as e:
+        print(f"\n\n💥 Critical error: {e}")
+        errors.append(f"Critical: {e}")
+
+    finally:
+        # ═══ همیشه اجرا می‌شود ═══
+        end_time = datetime.now()
+        duration = (end_time - start_time).seconds
+        
+        print("\n" + "═" * 50)
+        
+        if errors:
+            print(f"⚠️ BUILD COMPLETED WITH {len(errors)} ERROR(S)")
+            print("─" * 50)
+            for err in errors:
+                print(f"   • {err}")
+        else:
+            print("✅ BUILD COMPLETE — NO ERRORS")
+        
+        print("─" * 50)
+        print(f"⏱️ Duration: {duration}s")
+        print(f"🏁 Finished: {end_time.strftime('%H:%M:%S')}")
+        print("═" * 50)
+
+if __name__ == "__main__":
+    main()
+
+
 
 
 ====================
@@ -4612,6 +5147,47 @@ def send_telegram(message: str, level: str = "INFO") -> bool:
     bot = get_bot()
     result = bot.send_alert(level, message)
     return result.get("ok", False)
+
+
+====================
+File: modules\network\telegram_client.py
+====================
+
+import os
+import requests
+from dotenv import load_dotenv
+
+# Ensure env is loaded
+load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env'))
+
+class TelegramBot:
+    def __init__(self):
+        self.token = os.getenv("TELEGRAM_BOT_TOKEN")
+        self.chat_id = os.getenv("TELEGRAM_CHAT_ID")
+        self.base_url = f"https://api.telegram.org/bot{self.token}/sendMessage"
+
+    def send_message(self, message):
+        if not self.token or not self.chat_id:
+            print(f"🔕 Telegram Auth Missing (Check .env).")
+            return False
+
+        payload = {
+            "chat_id": self.chat_id,
+            "text": message,
+            "parse_mode": "HTML"
+        }
+        
+        try:
+            # Using verify=False to avoid SSL issues on some local proxies, can be removed in prod
+            response = requests.post(self.base_url, json=payload, timeout=10)
+            if response.status_code == 200:
+                return True
+            else:
+                print(f"❌ TG Error {response.status_code}: {response.text}")
+                return False
+        except Exception as e:
+            print(f"❌ TG Connection Error: {e}")
+            return False
 
 
 ====================
