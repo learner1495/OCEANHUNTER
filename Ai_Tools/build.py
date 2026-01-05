@@ -1,11 +1,12 @@
-# AI_Tools/build.py — Phase 9: Dashboard & Live Loop
+# AI_Tools/build.py — Phase 9 Fix: Auto-Launch & Telegram Test
 # ═══════════════════════════════════════════════════════════════
-# Ref: OCEAN-HUNTER-PHASE9-DASHBOARD
+# Ref: OCEAN-HUNTER-PHASE9-FIX-LAUNCHER
 # ═══════════════════════════════════════════════════════════════
 
 import os
 import sys
 import subprocess
+import time
 
 # ═══ Import Internal Modules ═══
 try:
@@ -18,7 +19,7 @@ SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT = os.path.dirname(SCRIPT_DIR)
 
 # ═══════════════════════════════════════════════════════════════
-# 1. MEXC PROVIDER (Interface)
+# 1. MEXC PROVIDER (No Change)
 # ═══════════════════════════════════════════════════════════════
 MEXC_PROVIDER_CODE = """
 import os
@@ -97,6 +98,8 @@ RUN_BOT_CODE = """
 import os
 import sys
 import time
+import requests
+import pandas as pd
 from dotenv import load_dotenv
 
 # Add Root to path
@@ -104,32 +107,33 @@ sys.path.append(os.getcwd())
 
 from data.mexc_provider import MEXCProvider
 from strategy.smart_sniper import SmartSniperStrategy
-from models.virtual_wallet import VirtualWallet
 
 # Load Env
 load_dotenv()
 MODE = os.getenv("MODE", "PAPER").upper()
 SYMBOL = "SOLUSDT"
-
-# Telegram Setup
 TG_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
 TG_CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
 def send_telegram(msg):
-    if not TG_TOKEN or not TG_CHAT_ID: return
+    if not TG_TOKEN or not TG_CHAT_ID: 
+        print("⚠️ Telegram keys missing in .env")
+        return
     try:
-        import requests
         url = f"https://api.telegram.org/bot{TG_TOKEN}/sendMessage"
         payload = {"chat_id": TG_CHAT_ID, "text": msg, "parse_mode": "HTML"}
         requests.post(url, json=payload, timeout=5)
-    except: pass
+    except Exception as e:
+        print(f"Telegram Error: {e}")
 
 def main():
     print(f"🚀 ENGINE STARTED | Mode: {MODE}")
-    send_telegram(f"▶️ <b>Ocean Hunter Engine Started</b> ({MODE})")
+    send_telegram(f"▶️ <b>Ocean Hunter Engine Started</b>\\nMode: {MODE}\\nSymbol: {SYMBOL}")
     
     provider = MEXCProvider()
     strategy = SmartSniperStrategy()
+    
+    print(f"   Monitoring {SYMBOL}...")
     
     while True:
         try:
@@ -137,14 +141,15 @@ def main():
             df = provider.fetch_ohlcv(symbol=SYMBOL, limit=50)
             if not df.empty:
                 current_price = df.iloc[-1]['close']
-                rsi = strategy.indicators.get('rsi', pd.Series([0])).iloc[-1]
+                print(f"   [{time.strftime('%H:%M:%S')}] Price: {current_price} USDT")
                 
-                # Logic placeholder
-                print(f"   Tick: {current_price} | RSI: {rsi:.2f}")
+                # Here we would feed data to strategy...
                 
-            time.sleep(10) # Fast loop
+            time.sleep(10) # 10s Loop
             
         except KeyboardInterrupt:
+            print("\\n🛑 Stopping Engine...")
+            send_telegram("🛑 <b>Ocean Hunter Engine Stopped</b>")
             break
         except Exception as e:
             print(f"Error: {e}")
@@ -155,7 +160,7 @@ if __name__ == "__main__":
 """
 
 # ═══════════════════════════════════════════════════════════════
-# 3. DASHBOARD (The UI)
+# 3. DASHBOARD (Updated UI)
 # ═══════════════════════════════════════════════════════════════
 DASHBOARD_CODE = """
 import os
@@ -163,6 +168,7 @@ import sys
 import time
 import subprocess
 import signal
+import requests
 from dotenv import load_dotenv, set_key
 
 # Add Root to path
@@ -180,6 +186,7 @@ def load_config():
     return {
         "MODE": os.getenv("MODE", "PAPER"),
         "MEXC_KEY": os.getenv("MEXC_API_KEY", ""),
+        "TG_TOKEN": os.getenv("TELEGRAM_BOT_TOKEN", ""),
         "TG_ID": os.getenv("TELEGRAM_CHAT_ID", "")
     }
 
@@ -192,11 +199,31 @@ def update_env_variable(key, value):
 
 def show_header(config):
     clear_screen()
-    print("🌊 OCEAN HUNTER COMMANDER v1.0")
+    print("🌊 OCEAN HUNTER COMMANDER v1.1")
     print("═" * 40)
     print(f"📡 MODE:      {config['MODE']}")
     print(f"🤖 BOT STATE: {'🟢 RUNNING' if bot_process else '🔴 STOPPED'}")
     print("═" * 40)
+
+def test_telegram():
+    cfg = load_config()
+    print("\\n📨 TELEGRAM TEST")
+    if not cfg['TG_TOKEN'] or not cfg['TG_ID']:
+        print("❌ Token or Chat ID is missing in .env")
+    else:
+        print("   Sending test message...")
+        try:
+            url = f"https://api.telegram.org/bot{cfg['TG_TOKEN']}/sendMessage"
+            payload = {"chat_id": cfg['TG_ID'], "text": "✅ <b>Test Message from Dashboard</b>", "parse_mode": "HTML"}
+            resp = requests.post(url, json=payload, timeout=5)
+            if resp.status_code == 200:
+                print("   ✅ Success! Check your Telegram.")
+            else:
+                print(f"   ❌ Failed. Status: {resp.status_code}")
+                print(f"   Response: {resp.text}")
+        except Exception as e:
+            print(f"   ❌ Error: {e}")
+    input("\\nPress Enter to return...")
 
 def menu_wallets():
     print("\\n💰 WALLET CHECKER")
@@ -216,9 +243,8 @@ def menu_settings():
         clear_screen()
         print("⚙️ SETTINGS EDITOR")
         print("1. Change MODE (PAPER/LIVE)")
-        print("2. Update MEXC API Key")
-        print("3. Update MEXC Secret Key")
-        print("4. Back")
+        print("2. Update TELEGRAM Keys")
+        print("3. Back")
         
         ch = input("\\nSelect: ")
         if ch == '1':
@@ -226,12 +252,11 @@ def menu_settings():
             if new_mode in ['PAPER', 'LIVE']:
                 update_env_variable("MODE", new_mode)
         elif ch == '2':
-            new_key = input("Enter New API Key: ")
-            update_env_variable("MEXC_API_KEY", new_key)
+            token = input("Enter Bot Token: ")
+            chat_id = input("Enter Chat ID: ")
+            update_env_variable("TELEGRAM_BOT_TOKEN", token)
+            update_env_variable("TELEGRAM_CHAT_ID", chat_id)
         elif ch == '3':
-            new_sec = input("Enter New Secret Key: ")
-            update_env_variable("MEXC_SECRET_KEY", new_sec)
-        elif ch == '4':
             break
 
 def toggle_bot():
@@ -246,13 +271,14 @@ def toggle_bot():
         print("🛑 Bot Stopped.")
     else:
         # Start
+        print("🚀 Starting Engine...")
         cmd = [sys.executable, "run_bot.py"]
-        # Use Popen to run in background (new console window on Windows is better)
         if sys.platform == "win32":
+            # Opens in a NEW separate window so you can see logs while keeping dashboard open
             bot_process = subprocess.Popen(cmd, creationflags=subprocess.CREATE_NEW_CONSOLE)
         else:
             bot_process = subprocess.Popen(cmd)
-        print("✅ Bot Started in background.")
+        print("✅ Bot Started in new window.")
     time.sleep(2)
 
 def main():
@@ -262,18 +288,21 @@ def main():
         
         print("1. 🟢 Start / 🔴 Stop Bot")
         print("2. 💰 Check Wallet Balance")
-        print("3. ⚙️ Settings (Keys, Mode)")
-        print("4. ❌ Exit Dashboard")
+        print("3. 📨 Test Telegram Connection")
+        print("4. ⚙️ Settings (Keys, Mode)")
+        print("5. ❌ Exit Dashboard")
         
-        choice = input("\\nSelect Option [1-4]: ")
+        choice = input("\\nSelect Option [1-5]: ")
         
         if choice == '1':
             toggle_bot()
         elif choice == '2':
             menu_wallets()
         elif choice == '3':
-            menu_settings()
+            test_telegram()
         elif choice == '4':
+            menu_settings()
+        elif choice == '5':
             if bot_process:
                 print("⚠️ Warning: Bot is still running. Stop it first? (y/n)")
                 if input().lower() == 'y':
@@ -299,14 +328,12 @@ NEW_FILES = {
 # ═══════════════════════════════════════════════════════════════
 def main():
     print("\n" + "═" * 50)
-    print(f"🔧 BUILD Phase 9: Commander Dashboard")
+    print(f"🔧 BUILD Phase 9 Fix: Auto-Launcher")
     print("═" * 50)
 
     try:
         # 1. Write Files
         print("\n[1/3] 📝 Writing Files...")
-        
-        # Ensure data dir exists
         data_dir = os.path.join(ROOT, "data")
         if not os.path.exists(data_dir):
             os.makedirs(data_dir)
@@ -321,16 +348,25 @@ def main():
         print("\n[2/3] 🐙 Git Sync...")
         try:
             setup_git.setup()
-            setup_git.sync("Phase 9: Added Dashboard UI")
+            setup_git.sync("Phase 9 Fix: Dashboard Auto-Launch")
             print("      ✅ Git Synced")
         except:
             print("      ⚠️ Git Warning (Ignored)")
             
-        print("\n[3/3] 🏁 READY TO LAUNCH")
-        print("      Run the dashboard with:")
-        print("      python dashboard.py")
+        print("\n[3/3] 🚀 LAUNCHING DASHBOARD...")
+        print("      ⚠️ Look for a NEW window opening now!")
+        
+        time.sleep(2)
+        
+        # AUTO LAUNCH LOGIC
+        dash_path = os.path.join(ROOT, "dashboard.py")
+        if sys.platform == "win32":
+            subprocess.Popen(f'start cmd /k "{sys.executable}" "{dash_path}"', shell=True)
+        else:
+            # Linux/Mac fallback
+            print(f"      👉 Please run: python {dash_path}")
 
-        print("\n🎉 PHASE 9 COMPLETE!")
+        print("\n🎉 DONE! You can close this build window.")
 
     except Exception as e:
         print(f"\n💥 Error: {e}")
