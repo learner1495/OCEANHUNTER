@@ -1,6 +1,6 @@
-# AI_Tools/build.py — Phase 13: Final Setup & Telegram Tester
+# AI_Tools/build.py — Phase 13: Fix Console Input (Pop-up Window)
 # ═══════════════════════════════════════════════════════════════
-# Ref: PHASE-13-TELEGRAM-TEST
+# Ref: PHASE-13-FIX-WINDOW
 # ═══════════════════════════════════════════════════════════════
 
 import os
@@ -25,10 +25,9 @@ except ImportError:
 VENV_PYTHON = os.path.join(PROJECT_ROOT, ".venv", "Scripts", "python.exe")
 
 # ═══════════════════════════════════════════════════════════════
-# 2. TEMPLATES
+# 2. TEMPLATES (UNCHANGED)
 # ═══════════════════════════════════════════════════════════════
 
-# A. The Dashboard
 DASHBOARD_CONTENT = r'''
 import os
 import sys
@@ -36,7 +35,6 @@ import subprocess
 import time
 from dotenv import load_dotenv
 
-# Load Env explicitly to be safe
 load_dotenv()
 
 class Colors:
@@ -114,14 +112,12 @@ if __name__ == "__main__":
     main_menu()
 '''
 
-# B. The Telegram Tester
 TELEGRAM_TESTER_CONTENT = r'''
 import os
 import requests
 import sys
 from dotenv import load_dotenv
 
-# Force load .env
 load_dotenv()
 
 TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
@@ -133,13 +129,11 @@ print("-" * 50)
 
 if not TOKEN or not CHAT_ID:
     print("❌ ERROR: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not found in .env")
-    print("   Please check your .env file.")
     sys.exit(1)
 
 print(f"🔹 Token: {TOKEN[:5]}...{TOKEN[-5:]}")
 print(f"🔹 Chat ID: {CHAT_ID}")
 
-# 1. Check Bot Info
 print("\n[1] Checking Bot Status...")
 try:
     url = f"https://api.telegram.org/bot{TOKEN}/getMe"
@@ -157,7 +151,6 @@ except Exception as e:
     print("   (Check your VPN/Internet)")
     sys.exit(1)
 
-# 2. Send Test Message
 print("\n[2] Sending Test Message...")
 try:
     msg = "🔔 OCEAN HUNTER: Connection Successful!\nYour bot is ready to trade."
@@ -179,7 +172,6 @@ except Exception as e:
 print("-" * 50)
 '''
 
-# C. The BAT Launcher
 BAT_CONTENT = r'''
 @echo off
 cd /d "%~dp0"
@@ -200,41 +192,43 @@ if exist ".venv\Scripts\python.exe" (
 def main():
     print(f"\n[1/4] 🏗️  Building in: {PROJECT_ROOT}")
     
-    # 1. Create run_dashboard.py
+    # Files Creation
     with open(os.path.join(PROJECT_ROOT, "run_dashboard.py"), "w", encoding="utf-8") as f:
         f.write(DASHBOARD_CONTENT)
-    print("      ✅ run_dashboard.py created")
-
-    # 2. Create test_telegram_conn.py
     with open(os.path.join(PROJECT_ROOT, "test_telegram_conn.py"), "w", encoding="utf-8") as f:
         f.write(TELEGRAM_TESTER_CONTENT)
-    print("      ✅ test_telegram_conn.py created")
-
-    # 3. Create run_dashboard.bat
     with open(os.path.join(PROJECT_ROOT, "run_dashboard.bat"), "w", encoding="utf-8") as f:
         f.write(BAT_CONTENT)
-    print("      ✅ run_dashboard.bat created")
+    
+    print("      ✅ Files created (Dashboard, Tester, BAT)")
 
-    # 4. Context & Git
+    # Git Sync
     print("\n[2/4] 📚 Git Sync...")
     if 'context_gen' in sys.modules:
         context_gen.create_context_file()
     if 'setup_git' in sys.modules:
-        setup_git.sync("Phase 13: Telegram Tools")
+        setup_git.sync("Phase 13: Telegram Tools & Fix Window")
     print("      ✅ Synced")
 
-    # 5. Launch
+    # Launch logic (UPDATED FOR WINDOWS POPUP)
     print("\n[3/4] 🚀 Launching Dashboard...")
-    print("      (Please select Option 3 to test Telegram)")
-    time.sleep(2)
+    print("      ⚠️  A new window will open. Please check your taskbar!")
+    time.sleep(1)
     
     runner = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
-    try:
-        subprocess.run([runner, "run_dashboard.py"], cwd=PROJECT_ROOT)
-    except KeyboardInterrupt:
-        print("\n👋 Exited by user.")
-    except Exception as e:
-        print(f"❌ Error: {e}")
+    
+    # FIX: Force open a new window on Windows
+    if sys.platform == "win32":
+        bat_path = os.path.join(PROJECT_ROOT, "run_dashboard.bat")
+        # 'start' command opens a new independent window
+        os.system(f'start "" "{bat_path}"')
+        print("      ✅ Opened in external window.")
+    else:
+        # Fallback for Linux/Mac
+        try:
+            subprocess.run([runner, "run_dashboard.py"], cwd=PROJECT_ROOT)
+        except KeyboardInterrupt:
+            print("\n👋 Exited.")
 
 if __name__ == "__main__":
     main()

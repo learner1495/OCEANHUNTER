@@ -5,7 +5,6 @@ import subprocess
 import time
 from dotenv import load_dotenv
 
-# Load Env explicitly to be safe
 load_dotenv()
 
 class Colors:
