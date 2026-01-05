@@ -1,4 +1,4 @@
-GENERATED: 2026-01-05 20:39:11
+GENERATED: 2026-01-05 21:18:47
 VERSION: 3.1 (Phase 1: Virtual Wallet)
 
 PROJECT STRUCTURE:
@@ -14,6 +14,7 @@ OCEANHUNTER/
     proxy_fixer.py
     requirements.txt
     run_bot.py
+    run_dashboard.py
     setup_test_data.py
     simple_test.py
     smart_connect.py
@@ -913,6 +914,110 @@ def run_engine():
 
 if __name__ == "__main__":
     run_engine()
+
+
+====================
+File: run_dashboard.py
+====================
+
+import os
+import sys
+import subprocess
+import time
+
+# ─── COLOR CONFIG ───
+class Colors:
+    HEADER = '\033[95m'
+    BLUE = '\033[94m'
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
+
+# ─── PATH SETUP ───
+# Ensure we run from Project Root
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+os.chdir(CURRENT_DIR)
+
+def clear_screen():
+    os.system('cls' if os.name == 'nt' else 'clear')
+
+def print_banner():
+    clear_screen()
+    print(Colors.CYAN + "╔════════════════════════════════════════════════════════════╗" + Colors.ENDC)
+    print(Colors.CYAN + "║   " + Colors.BOLD + "🌊 OCEAN HUNTER | COMMAND CENTER v2.5 (Stable)" + Colors.ENDC + Colors.CYAN + "           ║" + Colors.ENDC)
+    print(Colors.CYAN + "╚════════════════════════════════════════════════════════════╝" + Colors.ENDC)
+    print(f" {Colors.BOLD}📍 Root Path:{Colors.ENDC} {os.getcwd()}")
+    
+    # Check .env status
+    if os.path.exists(".env"):
+        print(f" {Colors.BOLD}🔐 Security:{Colors.ENDC}  {Colors.GREEN}.env Found{Colors.ENDC}")
+    else:
+        print(f" {Colors.BOLD}🔐 Security:{Colors.ENDC}  {Colors.FAIL}.env MISSING!{Colors.ENDC}")
+    print(Colors.BLUE + "──────────────────────────────────────────────────────────────" + Colors.ENDC)
+
+def run_script(script_path):
+    full_path = os.path.abspath(script_path)
+    print(f"\n{Colors.WARNING}>> Launching: {script_path}{Colors.ENDC}")
+    time.sleep(1)
+    
+    python_exec = sys.executable
+    try:
+        # Critical: Run with CURRENT_DIR as cwd
+        subprocess.run([python_exec, full_path], cwd=CURRENT_DIR, check=False)
+    except Exception as e:
+        print(f"{Colors.FAIL}Execution Error: {e}{Colors.ENDC}")
+    
+    input(f"\n{Colors.BLUE}[Press Enter to return to menu]{Colors.ENDC}")
+
+def main_menu():
+    while True:
+        print_banner()
+        print(f"{Colors.BOLD}ACTIONS:{Colors.ENDC}")
+        print(" [1] 🚀 START BOT (Live Trading Mode)")
+        print(" [2] 🛡️ START BOT (Safe Mode - Simulation)")
+        print(" [3] 📡 TEST TELEGRAM CONNECTION (Critical Step)")
+        print(" [4] 🛠️ RE-BUILD PROJECT (Update Logic via build.py)")
+        print(" [5] ❌ EXIT")
+        print("\n" + Colors.BLUE + "──────────────────────────────────────────────────────────────" + Colors.ENDC)
+        
+        choice = input(f"{Colors.GREEN}>> Select Option [1-5]: {Colors.ENDC}").strip()
+        
+        if choice == '1':
+            os.environ['MODE'] = 'LIVE'
+            run_script("run_bot.py")
+        elif choice == '2':
+            os.environ['MODE'] = 'SAFE'
+            run_script("run_bot.py")
+        elif choice == '3':
+            # This file is usually in Ai_Tools or Root based on context. 
+            # Assuming we create a temporary test wrapper or execute logic directly.
+            # For now, we point to a dedicated test script if exists, or inline logic.
+            if os.path.exists("test_telegram_conn.py"):
+                 run_script("test_telegram_conn.py")
+            else:
+                 # Create temp test script
+                 with open("test_telegram_conn.py", "w", encoding="utf-8") as f:
+                     f.write("import os\nfrom dotenv import load_dotenv\nload_dotenv()\n")
+                     f.write("print('Testing Token loading...')\n")
+                     f.write("print(f'Token found: {bool(os.getenv(\"TELEGRAM_BOT_TOKEN\"))}')")
+                 run_script("test_telegram_conn.py")
+                 
+        elif choice == '4':
+            build_script = os.path.join("Ai_Tools", "build.py")
+            run_script(build_script)
+        elif choice == '5':
+            print("\n👋 Exiting...")
+            break
+        else:
+            print(f"\n{Colors.FAIL}Invalid input.{Colors.ENDC}")
+            time.sleep(1)
+
+if __name__ == "__main__":
+    os.system('color') # Enable colors in CMD
+    main_menu()
 
 
 ====================
@@ -3256,290 +3361,220 @@ All 15 scenarios PASS → Paper Mode OK → LIVE_TEST eligible
 ====================
 File: Ai_Tools\build.py
 ====================
-# AI_Tools/build.py — Phase 11: Light Build (No Re-install)
+# AI_Tools/build.py — Phase 12: Final Infrastructure Fix
 # ═══════════════════════════════════════════════════════════════
-# Ref: PHASE-11-LIGHT-BUILD
+# Ref: PHASE-12-FINAL-ROOT-FIX
 # ═══════════════════════════════════════════════════════════════
 
 import os
 import sys
+import subprocess
+import time
 
 # ═══════════════════════════════════════════════════════════════
-# 1. SETUP PATHS & UTILS (No External Deps)
+# 1. SETUP PATHS & IMPORTS
 # ═══════════════════════════════════════════════════════════════
 
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
+# Determine paths relative to THIS script (Ai_Tools/build.py)
+SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__)) # F:\OCEANHUNTER\Ai_Tools
+PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)              # F:\OCEANHUNTER
+sys.path.append(SCRIPT_DIR)                             # Allow importing siblings
 
-def load_env_manual(env_path):
-    """Reads .env without needing the 'python-dotenv' library installed on host."""
-    env_vars = {}
-    if os.path.exists(env_path):
-        with open(env_path, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#') or '=' not in line:
-                    continue
-                key, val = line.split('=', 1)
-                env_vars[key.strip()] = val.strip().strip("'").strip('"')
-    return env_vars
-
-# Load Workflow Modules (If present)
+# Try imports
 try:
     import context_gen
     import setup_git
 except ImportError:
-    pass
+    print("⚠️ Warning: context_gen or setup_git not found in Ai_Tools.")
+
+VENV_PYTHON = os.path.join(PROJECT_ROOT, ".venv", "Scripts", "python.exe")
 
 # ═══════════════════════════════════════════════════════════════
-# 2. FILE TEMPLATES (The code to be injected)
+# 2. TEMPLATES (DASHBOARD & BAT)
 # ═══════════════════════════════════════════════════════════════
 
-TELEGRAM_CLIENT_CODE = r'''
+DASHBOARD_CONTENT = r'''
 import os
-import requests
-from dotenv import load_dotenv
-
-# Ensure env is loaded
-load_dotenv(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), '.env'))
-
-class TelegramBot:
-    def __init__(self):
-        self.token = os.getenv("TELEGRAM_BOT_TOKEN")
-        self.chat_id = os.getenv("TELEGRAM_CHAT_ID")
-        self.base_url = f"https://api.telegram.org/bot{self.token}/sendMessage"
-
-    def send_message(self, message):
-        if not self.token or not self.chat_id:
-            print(f"🔕 Telegram Auth Missing (Check .env).")
-            return False
-
-        payload = {
-            "chat_id": self.chat_id,
-            "text": message,
-            "parse_mode": "HTML"
-        }
-        
-        try:
-            # Using verify=False to avoid SSL issues on some local proxies, can be removed in prod
-            response = requests.post(self.base_url, json=payload, timeout=10)
-            if response.status_code == 200:
-                return True
-            else:
-                print(f"❌ TG Error {response.status_code}: {response.text}")
-                return False
-        except Exception as e:
-            print(f"❌ TG Connection Error: {e}")
-            return False
-'''
-
-RUN_BOT_CODE = r'''
-import os
+import sys
+import subprocess
 import time
-import sys
-from dotenv import load_dotenv
 
-# Setup Paths
-sys.path.append(os.path.dirname(os.path.dirname(__file__)))
+# ─── COLOR CONFIG ───
+class Colors:
+    HEADER = '\033[95m'
+    BLUE = '\033[94m'
+    CYAN = '\033[96m'
+    GREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    ENDC = '\033[0m'
+    BOLD = '\033[1m'
 
-# Imports
-from modules.mexc_provider import MEXCData
-from modules.network.telegram_client import TelegramBot
+# ─── PATH SETUP ───
+# Ensure we run from Project Root
+CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
+os.chdir(CURRENT_DIR)
 
-# Load Environment
-load_dotenv()
+def clear_screen():
+    os.system('cls' if os.name == 'nt' else 'clear')
 
-# Configuration
-SYMBOL = "BTCUSDT"
-TIMEFRAME = "15m"
-
-def calculate_rsi(prices, period=14):
-    import numpy as np
-    if len(prices) < period + 1: return 50.0
-    deltas = np.diff(prices)
-    seed = deltas[:period+1]
-    up = seed[seed >= 0].sum()/period
-    down = -seed[seed < 0].sum()/period
-    rs = up/down if down != 0 else 0
-    rsi = np.zeros_like(prices)
-    rsi[:period] = 100. - 100./(1. + rs)
-    for i in range(period, len(prices)):
-        delta = deltas[i-1]
-        if delta > 0:
-            upval = delta
-            downval = 0.
-        else:
-            upval = 0.
-            downval = -delta
-        up = (up * (period - 1) + upval) / period
-        down = (down * (period - 1) + downval) / period
-        rs = up/down if down != 0 else 0
-        rsi[i] = 100. - 100./(1. + rs)
-    return rsi[-1]
-
-def calculate_bollinger_bands(prices, period=20, std_dev=2):
-    import numpy as np
-    if len(prices) < period: return 0, 0, 0
-    sma = np.mean(prices[-period:])
-    std = np.std(prices[-period:])
-    upper = sma + (std_dev * std)
-    lower = sma - (std_dev * std)
-    return upper, sma, lower
-
-def run_engine():
-    print(f"\n🚀 OCEAN HUNTER ENGINE STARTED")
-    print(f"🎯 Target: {SYMBOL} | Strategy: Smart Sniper V10.8.2")
+def print_banner():
+    clear_screen()
+    print(Colors.CYAN + "╔════════════════════════════════════════════════════════════╗" + Colors.ENDC)
+    print(Colors.CYAN + "║   " + Colors.BOLD + "🌊 OCEAN HUNTER | COMMAND CENTER v2.5 (Stable)" + Colors.ENDC + Colors.CYAN + "           ║" + Colors.ENDC)
+    print(Colors.CYAN + "╚════════════════════════════════════════════════════════════╝" + Colors.ENDC)
+    print(f" {Colors.BOLD}📍 Root Path:{Colors.ENDC} {os.getcwd()}")
     
-    provider = MEXCData()
-    bot = TelegramBot()
-    
-    # Startup Message
-    start_msg = f"🌊 <b>OCEAN HUNTER ONLINE</b>\nSymbol: {SYMBOL}\nMode: {os.getenv('MODE', 'UNKNOWN')}"
-    print("   📨 Sending startup message to Telegram...")
-    if bot.send_message(start_msg):
-        print("   ✅ Telegram Connected Successfully.")
+    # Check .env status
+    if os.path.exists(".env"):
+        print(f" {Colors.BOLD}🔐 Security:{Colors.ENDC}  {Colors.GREEN}.env Found{Colors.ENDC}")
     else:
-        print("   ⚠️ Telegram Message Failed (Check VPN/Proxy/Keys).")
+        print(f" {Colors.BOLD}🔐 Security:{Colors.ENDC}  {Colors.FAIL}.env MISSING!{Colors.ENDC}")
+    print(Colors.BLUE + "──────────────────────────────────────────────────────────────" + Colors.ENDC)
 
-    cycle_count = 0
+def run_script(script_path):
+    full_path = os.path.abspath(script_path)
+    print(f"\n{Colors.WARNING}>> Launching: {script_path}{Colors.ENDC}")
+    time.sleep(1)
     
+    python_exec = sys.executable
+    try:
+        # Critical: Run with CURRENT_DIR as cwd
+        subprocess.run([python_exec, full_path], cwd=CURRENT_DIR, check=False)
+    except Exception as e:
+        print(f"{Colors.FAIL}Execution Error: {e}{Colors.ENDC}")
+    
+    input(f"\n{Colors.BLUE}[Press Enter to return to menu]{Colors.ENDC}")
+
+def main_menu():
     while True:
-        try:
-            cycle_count += 1
-            if cycle_count % 10 == 0:
-                 print(f"\n[Cycle {cycle_count}] Scanning Markets...")
-            
-            # Fetch & Analyze
-            df = provider.get_klines(SYMBOL, TIMEFRAME, limit=50)
-            if df is not None and not df.empty:
-                closes = df['close'].values
-                current_price = closes[-1]
-                rsi = calculate_rsi(closes)
-                upper, mid, lower = calculate_bollinger_bands(closes)
-                
-                score = 0
-                reasons = []
-                
-                # Strategy Logic
-                if rsi < 35:
-                    score += 35
-                    reasons.append(f"RSI Oversold ({rsi:.2f})")
-                if current_price < lower:
-                    score += 35
-                    reasons.append("Price < BB Lower")
-                
-                # Signal Trigger
-                if score >= 70:
-                    msg = f"🎯 <b>SIGNAL DETECTED</b>\nPrice: {current_price}\nScore: {score}\nReasons: {', '.join(reasons)}"
-                    print(f"   🚨 SIGNAL FOUND! Score: {score}")
-                    bot.send_message(msg)
-                    time.sleep(60) 
-                
-                # Status Line
-                sys.stdout.write(f"\r   Price: {current_price:.2f} | RSI: {rsi:.2f} | Score: {score}   ")
-                sys.stdout.flush()
-
-            time.sleep(5)
-
-        except KeyboardInterrupt:
-            bot.send_message("🛑 Bot Stopped by User.")
+        print_banner()
+        print(f"{Colors.BOLD}ACTIONS:{Colors.ENDC}")
+        print(" [1] 🚀 START BOT (Live Trading Mode)")
+        print(" [2] 🛡️ START BOT (Safe Mode - Simulation)")
+        print(" [3] 📡 TEST TELEGRAM CONNECTION (Critical Step)")
+        print(" [4] 🛠️ RE-BUILD PROJECT (Update Logic via build.py)")
+        print(" [5] ❌ EXIT")
+        print("\n" + Colors.BLUE + "──────────────────────────────────────────────────────────────" + Colors.ENDC)
+        
+        choice = input(f"{Colors.GREEN}>> Select Option [1-5]: {Colors.ENDC}").strip()
+        
+        if choice == '1':
+            os.environ['MODE'] = 'LIVE'
+            run_script("run_bot.py")
+        elif choice == '2':
+            os.environ['MODE'] = 'SAFE'
+            run_script("run_bot.py")
+        elif choice == '3':
+            # This file is usually in Ai_Tools or Root based on context. 
+            # Assuming we create a temporary test wrapper or execute logic directly.
+            # For now, we point to a dedicated test script if exists, or inline logic.
+            if os.path.exists("test_telegram_conn.py"):
+                 run_script("test_telegram_conn.py")
+            else:
+                 # Create temp test script
+                 with open("test_telegram_conn.py", "w", encoding="utf-8") as f:
+                     f.write("import os\nfrom dotenv import load_dotenv\nload_dotenv()\n")
+                     f.write("print('Testing Token loading...')\n")
+                     f.write("print(f'Token found: {bool(os.getenv(\"TELEGRAM_BOT_TOKEN\"))}')")
+                 run_script("test_telegram_conn.py")
+                 
+        elif choice == '4':
+            build_script = os.path.join("Ai_Tools", "build.py")
+            run_script(build_script)
+        elif choice == '5':
+            print("\n👋 Exiting...")
             break
-        except Exception as e:
-            print(f"Error: {e}")
-            time.sleep(10)
+        else:
+            print(f"\n{Colors.FAIL}Invalid input.{Colors.ENDC}")
+            time.sleep(1)
 
 if __name__ == "__main__":
-    run_engine()
+    os.system('color') # Enable colors in CMD
+    main_menu()
 '''
 
-TESTER_CODE = r'''
-import sys
-import os
-from dotenv import load_dotenv
+BAT_CONTENT = r'''
+@echo off
+cd /d "%~dp0"
+title OCEAN HUNTER - LAUNCHER
+color 0B
+cls
+echo ======================================================
+echo    OCEAN HUNTER v10.8.2 | LAUNCHER
+echo ======================================================
+echo.
+echo [INFO] Checking Python Environment...
 
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from modules.network.telegram_client import TelegramBot
+if exist ".venv\Scripts\python.exe" (
+    echo [OK] Using Virtual Environment (.venv)
+    ".venv\Scripts\python.exe" run_dashboard.py
+) else (
+    echo [WARN] .venv not found. Attempting system python...
+    python run_dashboard.py
+)
 
-def test():
-    print("\n📡 TESTING TELEGRAM CONNECTION...")
-    
-    env_path = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), '.env')
-    load_dotenv(env_path)
-    
-    token = os.getenv("TELEGRAM_BOT_TOKEN")
-    
-    print(f"   Context: .env found at {env_path}")
-    print(f"   Token Loaded: {'YES' if token else 'NO'}")
-    
-    bot = TelegramBot()
-    print("   Attempting to send message...")
-    result = bot.send_message("📡 <b>Test Packet</b>\nOcean Hunter Connectivity Verified.")
-    
-    if result:
-        print("\n   ✅ SUCCESS: Message sent to Telegram.")
-    else:
-        print("\n   ❌ FAILED: Check VPN or Token.")
-        
-    input("\nPress Enter to return...")
-
-if __name__ == "__main__":
-    test()
+if %ERRORLEVEL% NEQ 0 (
+    echo.
+    echo [ERROR] Could not launch dashboard.
+    pause
+)
 '''
 
 # ═══════════════════════════════════════════════════════════════
-# 3. MAIN BUILD LOGIC
+# 3. BUILD LOGIC
 # ═══════════════════════════════════════════════════════════════
 
 def main():
-    print("="*60)
-    print("      OCEAN HUNTER | PHASE 11: TELEGRAM LINKUP (LIGHT)")
-    print("="*60)
-
-    # 1. READ ENV MANUALLY (Just to check, no dependency needed)
-    env_path = os.path.join(PROJECT_ROOT, ".env")
-    env_vars = load_env_manual(env_path)
-    token = env_vars.get("TELEGRAM_BOT_TOKEN")
+    print(f"\n[1/4] 🏗️  Target Root: {PROJECT_ROOT}")
     
-    if token:
-        print(f"✅ Environment Config Detected.")
-    else:
-        print("⚠️ Warning: TELEGRAM_BOT_TOKEN not found in .env (Bot may fail).")
+    # 1. Generate run_dashboard.py in ROOT
+    dash_path = os.path.join(PROJECT_ROOT, "run_dashboard.py")
+    try:
+        with open(dash_path, "w", encoding="utf-8") as f:
+            f.write(DASHBOARD_CONTENT)
+        print(f"      ✅ Generated: {dash_path}")
+    except Exception as e:
+        print(f"      ❌ Error writing dashboard: {e}")
+        return
 
-    # 2. GENERATE FILES
-    print("\n🛠️ [2/3] Generating code files...")
-    
-    # Telegram Client
-    net_dir = os.path.join(PROJECT_ROOT, "modules", "network")
-    os.makedirs(net_dir, exist_ok=True)
-    with open(os.path.join(net_dir, "telegram_client.py"), "w", encoding="utf-8") as f:
-        f.write(TELEGRAM_CLIENT_CODE)
-    print("   -> Created modules/network/telegram_client.py")
-    
-    # Run Bot
-    with open(os.path.join(PROJECT_ROOT, "run_bot.py"), "w", encoding="utf-8") as f:
-        f.write(RUN_BOT_CODE)
-    print("   -> Created run_bot.py")
+    # 2. Generate run_dashboard.bat in ROOT
+    bat_path = os.path.join(PROJECT_ROOT, "run_dashboard.bat")
+    try:
+        with open(bat_path, "w", encoding="utf-8") as f:
+            f.write(BAT_CONTENT)
+        print(f"      ✅ Generated: {bat_path}")
+    except Exception as e:
+        print(f"      ❌ Error writing bat file: {e}")
 
-    # Tester
-    with open(os.path.join(PROJECT_ROOT, "test_telegram_conn.py"), "w", encoding="utf-8") as f:
-        f.write(TESTER_CODE)
-    print("   -> Created test_telegram_conn.py")
-
-    # 3. SYNC
-    print("\n🐙 [3/3] Syncing to Git...")
-    if 'context_gen' in sys.modules and 'setup_git' in sys.modules:
-        try:
+    # 3. Update Context (Standard Workflow)
+    print("\n[2/4] 📚 Updating Context & Git...")
+    try:
+        if 'context_gen' in sys.modules:
             context_gen.create_context_file()
-            setup_git.sync("Phase 11: Telegram Integration (Light Build)")
-        except Exception as e:
-            print(f"   ⚠️ Git Sync Warning: {e}")
-    else:
-        print("   ⚠️ Workflow modules missing. Skipping Git sync.")
+            print("      ✅ Context Updated")
+        if 'setup_git' in sys.modules:
+            setup_git.sync("Phase 12: Dashboard Fix")
+            print("      ✅ Git Synced")
+    except Exception as e:
+        print(f"      ⚠️  Context/Git Warning: {e}")
+
+    # 4. Auto-Launch Dashboard
+    print("\n[3/4] 🚀 Launching Dashboard...")
+    print("      (A new menu should appear. If not, use 'run_dashboard.bat' in project root)")
+    time.sleep(2)
+
+    runner = VENV_PYTHON if os.path.exists(VENV_PYTHON) else sys.executable
+    
+    # CRITICAL: Run subprocess relative to PROJECT_ROOT, not Ai_Tools
+    try:
+        subprocess.run([runner, "run_dashboard.py"], cwd=PROJECT_ROOT)
+    except Exception as e:
+        print(f"      ❌ Launch Failed: {e}")
+        print(f"      👉 Please go to {PROJECT_ROOT} and double-click run_dashboard.bat")
 
 if __name__ == "__main__":
     main()
-    print("\n✅ BUILD COMPLETE.")
-    print("👉 Now run the Dashboard (Option 3) to test Telegram.")
 
 
 ====================
