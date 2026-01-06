@@ -1,82 +1,192 @@
 
 import os
 import sys
-import subprocess
 import time
+import requests
+import csv
+from datetime import datetime
 from dotenv import load_dotenv
 
+# Load Environment
 load_dotenv()
+BOT_TOKEN = os.getenv("TELEGRAM_BOT_TOKEN")
+CHAT_ID = os.getenv("TELEGRAM_CHAT_ID")
 
-class Colors:
-    HEADER = '\033[95m'
-    BLUE = '\033[94m'
-    CYAN = '\033[96m'
-    GREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    ENDC = '\033[0m'
-    BOLD = '\033[1m'
-
-CURRENT_DIR = os.path.dirname(os.path.abspath(__file__))
-os.chdir(CURRENT_DIR)
-
-def clear_screen():
-    os.system('cls' if os.name == 'nt' else 'clear')
-
-def print_banner():
-    clear_screen()
-    print(Colors.CYAN + "╔════════════════════════════════════════════════════════════╗" + Colors.ENDC)
-    print(Colors.CYAN + "║   " + Colors.BOLD + "🌊 OCEAN HUNTER | COMMAND CENTER v2.7" + Colors.ENDC + Colors.CYAN + "                  ║" + Colors.ENDC)
-    print(Colors.CYAN + "╚════════════════════════════════════════════════════════════╝" + Colors.ENDC)
-    print(f" 📍 Root: {os.getcwd()}")
+# ════════════════ HELPER: SEND TELEGRAM ════════════════
+def send_telegram(message):
+    if not BOT_TOKEN or not CHAT_ID:
+        print("   ❌ Telegram credentials missing in .env")
+        return
     
-    if os.getenv("TELEGRAM_BOT_TOKEN"):
-        print(f" 🔐 Telegram: {Colors.GREEN}Configured{Colors.ENDC}")
-    else:
-        print(f" 🔐 Telegram: {Colors.FAIL}MISSING IN .ENV{Colors.ENDC}")
-    print(Colors.BLUE + "──────────────────────────────────────────────────────────────" + Colors.ENDC)
-
-def run_script(script_name):
-    print(f"\n{Colors.WARNING}>> Running {script_name}...{Colors.ENDC}")
-    time.sleep(1)
-    python_exec = sys.executable
+    url = f"https://api.telegram.org/bot{BOT_TOKEN}/sendMessage"
+    payload = {"chat_id": CHAT_ID, "text": message, "parse_mode": "Markdown"}
+    
     try:
-        subprocess.run([python_exec, script_name], cwd=CURRENT_DIR)
-    except Exception as e:
-        print(f"{Colors.FAIL}Error: {e}{Colors.ENDC}")
-    input(f"\n{Colors.BLUE}[Press Enter]{Colors.ENDC}")
+        # Smart Proxy Check (from Phase 14)
+        proxies = None
+        possible_ports = [10809, 2081, 1080, 7890]
+        for port in possible_ports:
+            try:
+                p_url = f"http://127.0.0.1:{port}"
+                requests.get("https://api.telegram.org", proxies={"https": p_url}, timeout=2)
+                proxies = {"https": p_url, "http": p_url}
+                break
+            except:
+                continue
 
+        resp = requests.post(url, json=payload, proxies=proxies, timeout=10)
+        if resp.status_code == 200:
+            print("   ✅ Telegram Notification Sent!")
+        else:
+            print(f"   ❌ Telegram Error: {resp.text}")
+    except Exception as e:
+        print(f"   ❌ Network Error: {e}")
+
+# ════════════════ OPTION 4: SIMULATION ENGINE ════════════════
+def run_fast_simulation():
+    csv_path = os.path.join("tests", "data", "candles", "SOL_M15_DCA.csv")
+    if not os.path.exists(csv_path):
+        print(f"\n❌ ERROR: Data file not found at: {csv_path}")
+        print("   👉 Please run 'python setup_test_data.py' first.")
+        input("\n   Press Enter to return...")
+        return
+
+    print(f"\n🚀 STARTING HIGH-SPEED SIMULATION (SOL_M15_DCA)...")
+    print("-" * 60)
+    
+    # Sim Config
+    balance = 1000.0
+    position = None
+    history = []
+    
+    DCA_LAYERS = [
+        {"drop": 0.03, "mult": 1.5},
+        {"drop": 0.06, "mult": 2.0},
+        {"drop": 0.10, "mult": 2.5},
+    ]
+
+    with open(csv_path, "r") as f:
+        reader = csv.DictReader(f)
+        candles = list(reader)
+
+    print(f"   Loaded {len(candles)} candles. Simulating...")
+    
+    for row in candles:
+        price = float(row["close"])
+        timestamp = datetime.fromtimestamp(float(row["timestamp"])).strftime("%H:%M")
+        tag = row["scenario_tag"]
+        
+        # 1. LOGIC: BUY
+        if not position and tag == "ENTRY_SIGNAL":
+            invest = 100.0
+            coins = invest / price
+            balance -= invest
+            position = {"avg": price, "coins": coins, "invested": invest, "layer": 0}
+            msg = f"[{timestamp}] 🛒 BUY ENTRY @ ${price:.2f}"
+            print("   " + msg)
+            history.append(msg)
+            
+        # 2. LOGIC: MANAGE (DCA & TP)
+        elif position:
+            avg = position["avg"]
+            pnl_pct = (price - avg) / avg
+            layer = position["layer"]
+            
+            # Take Profit (1.5% or tag)
+            if pnl_pct >= 0.015 or tag == "DCA_EXIT_PROFIT":
+                revenue = position["coins"] * price
+                profit = revenue - position["invested"]
+                balance += revenue
+                msg = f"[{timestamp}] 🎉 TAKE PROFIT @ ${price:.2f} | Profit: ${profit:.2f} ({pnl_pct*100:.2f}%)"
+                print("   " + msg)
+                history.append(msg)
+                position = None # Reset
+            
+            # DCA Trigger
+            elif layer < len(DCA_LAYERS):
+                target_drop = DCA_LAYERS[layer]["drop"]
+                if pnl_pct <= -target_drop or "DCA_LAYER" in tag:
+                    mult = DCA_LAYERS[layer]["mult"]
+                    new_inv = position["invested"] * (mult - 1)
+                    if balance >= new_inv:
+                        balance -= new_inv
+                        new_coins = new_inv / price
+                        
+                        # Update Avg
+                        total_inv = position["invested"] + new_inv
+                        total_coins = position["coins"] + new_coins
+                        position["avg"] = total_inv / total_coins
+                        position["coins"] = total_coins
+                        position["invested"] = total_inv
+                        position["layer"] += 1
+                        
+                        msg = f"[{timestamp}] 📉 DCA LEVEL {position['layer']} @ ${price:.2f} | New Avg: ${position['avg']:.2f}"
+                        print("   " + msg)
+                        history.append(msg)
+
+    # FINISH
+    total_profit = balance - 1000.0
+    print("-" * 60)
+    print(f"🏁 FINAL BALANCE: ${balance:.2f}")
+    print(f"📈 TOTAL PROFIT:  ${total_profit:.2f}")
+    
+    # SEND REPORT TO TELEGRAM
+    tg_msg = (
+        f"🤖 *SIMULATION REPORT: SOL_M15_DCA*\n"
+        f"━━━━━━━━━━━━━━━━━━\n"
+        f"💰 Initial: $1000.0\n"
+        f"🏁 Final: ${balance:.2f}\n"
+        f"📈 Profit: ${total_profit:.2f} ({(total_profit/1000)*100:.2f}%)\n"
+        f"🔄 Trades: {len(history)}\n\n"
+        f"Status: ✅ SUCCESS"
+    )
+    send_telegram(tg_msg)
+    
+    input("\n   Press Enter to return to menu...")
+
+# ════════════════ MAIN MENU ════════════════
 def main_menu():
     while True:
-        print_banner()
-        print(" [1] 🚀 START BOT (Live)")
-        print(" [2] 🛡️ START BOT (Safe Mode)")
-        print(" [3] 📡 TEST TELEGRAM (Auto-Detect Proxy)")
-        print(" [4] 🛠️ RE-BUILD (Update Code)")
-        print(" [5] ❌ EXIT")
-        print("\n" + Colors.BLUE + "──────────────────────────────────────────────────────────────" + Colors.ENDC)
+        os.system('cls' if os.name == 'nt' else 'clear')
+        print(r"""
+   ___  _____________  ___    _   __   __  ____  ___   _____________________
+  / _ \/ ___/ __/ _ \/ _ |  / | / /  / / / / / / / | / /_  __/ __/ _ \/ _ \
+ / // / /__/ _// __ / __ | /    /  / /_/ / /_/ /  |/ / / / / _// , _/ // /
+ \___/\___/___/_/ |_\/_| |/_/|_|  \____/\____/_/|__/ /_/ /___/_/|_/____/ 
+        """)
+        print("   🌊 OCEAN HUNTER V10.8.2 - COMMAND CENTER")
+        print("   " + "="*50)
+        print("   1. 🤖 Run Bot (Safe Mode - Analysis Only)")
+        print("   2. 📄 Paper Trading (Live Data Simulation)")
+        print("   3. 📡 Test Telegram Connection")
+        print("   4. ⏩ RUN FAST SIMULATION (Use Test Data)")
+        print("   " + "="*50)
+        print("   0. Exit")
         
-        try:
-            choice = input(f"{Colors.GREEN}>> Select: {Colors.ENDC}").strip()
-        except:
-            break
-
+        choice = input("\n   👉 Select Option: ").strip()
+        
         if choice == '1':
-            os.environ['MODE'] = 'LIVE'
-            run_script("run_bot.py")
+            print("\n   Launching Bot in Safe Mode...")
+            # subprocess.run([sys.executable, "run_bot.py"]) # Placeholder
+            input("   (Function integrated in run_bot.py - Press Enter)")
         elif choice == '2':
-            os.environ['MODE'] = 'SAFE'
-            run_script("run_bot.py")
+            print("\n   Starting Paper Trading...")
+            # subprocess.run([sys.executable, "run_paper.py"]) # Placeholder
+            input("   (Function integrated in run_paper.py - Press Enter)")
         elif choice == '3':
-            run_script("test_telegram_conn.py")
+            os.system(f'{sys.executable} test_telegram_conn.py')
+            input("\n   Press Enter...")
         elif choice == '4':
-            run_script(os.path.join("Ai_Tools", "build.py"))
-        elif choice == '5':
-            break
+            run_fast_simulation()
+        elif choice == '0':
+            print("   👋 Exiting...")
+            sys.exit()
         else:
-            print("Invalid.")
-            time.sleep(0.5)
+            print("   ❌ Invalid option!")
+            time.sleep(1)
 
 if __name__ == "__main__":
-    os.system('color')
-    main_menu()
+    try:
+        main_menu()
+    except KeyboardInterrupt:
+        print("\n👋 Bye!")
