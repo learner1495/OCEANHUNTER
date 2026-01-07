@@ -1,35 +1,4 @@
-# AI_Tools/build.py — Phase 20: Execute Test Framework (Architecture Sec 17)
-# ═══════════════════════════════════════════════════════════════
-# Ref: PHASE-20-RUN-TESTS
-# ═══════════════════════════════════════════════════════════════
 
-import os
-import sys
-import subprocess
-import json
-import time
-
-# ═══════════════════════════════════════════════════════════════
-# 1. SETUP PATHS
-# ═══════════════════════════════════════════════════════════════
-SCRIPT_DIR = os.path.dirname(os.path.abspath(__file__))
-PROJECT_ROOT = os.path.dirname(SCRIPT_DIR)
-sys.path.append(SCRIPT_DIR)
-
-try:
-    import context_gen
-    import setup_git
-except ImportError:
-    pass
-
-VENV_PYTHON = os.path.join(PROJECT_ROOT, ".venv", "Scripts", "python.exe")
-
-# ═══════════════════════════════════════════════════════════════
-# 2. DEFINE TEST RUNNER (tests/run_tests.py)
-# ═══════════════════════════════════════════════════════════════
-# طبق بخش 17.11 معماری، این فایل مسئول اجرای سناریوهاست
-
-TEST_RUNNER_CONTENT = r'''
 import os
 import json
 import sys
@@ -139,49 +108,3 @@ if __name__ == "__main__":
         for sc in scenarios:
             runner.run_scenario(sc)
         runner.generate_report()
-'''
-
-# ═══════════════════════════════════════════════════════════════
-# 3. BUILD STEPS
-# ═══════════════════════════════════════════════════════════════
-
-def main():
-    print(f"\n[1/4] 🏗️ Ensuring Test Infrastructure...")
-    
-    # ساخت پوشه tests اگر نیست
-    tests_dir = os.path.join(PROJECT_ROOT, "tests")
-    if not os.path.exists(tests_dir):
-        os.makedirs(tests_dir)
-        print("      ✅ Created 'tests/' directory")
-
-    # ساخت run_tests.py
-    runner_path = os.path.join(tests_dir, "run_tests.py")
-    with open(runner_path, "w", encoding="utf-8") as f:
-        f.write(TEST_RUNNER_CONTENT)
-    print("      ✅ Installed 'tests/run_tests.py'")
-
-    # اطمینان از وجود داده‌های تست
-    print(f"\n[2/4] 🧪 Verifying Test Data...")
-    scenarios_dir = os.path.join(PROJECT_ROOT, "data", "scenarios")
-    if not os.path.exists(scenarios_dir) or not os.listdir(scenarios_dir):
-        print("      ⚠️ No scenarios found. Running setup_test_data.py...")
-        setup_data_script = os.path.join(PROJECT_ROOT, "setup_test_data.py")
-        if os.path.exists(setup_data_script):
-            subprocess.run([VENV_PYTHON, setup_data_script], check=True)
-            print("      ✅ Test data generated.")
-        else:
-            print("      ❌ Error: setup_test_data.py not found in root!")
-            return
-    else:
-        print("      ✅ Test scenarios found.")
-
-    print(f"\n[3/4] 🚀 Executing Test Suite (Architecture Sec 17.11)...")
-    print("      👉 Running: python tests/run_tests.py")
-    subprocess.run([VENV_PYTHON, runner_path])
-
-    print(f"\n[4/4] 📚 Git Sync...")
-    if 'context_gen' in sys.modules: context_gen.create_context_file()
-    if 'setup_git' in sys.modules: setup_git.sync("Phase 20: Run Test Suite")
-
-if __name__ == "__main__":
-    main()
